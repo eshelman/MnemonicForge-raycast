@@ -1,6 +1,6 @@
 import { stat, readFile, readdir } from "fs/promises";
 import path from "path";
-import chokidar from "chokidar";
+import { watch } from "fs";
 import matter from "gray-matter";
 import Ajv, { ErrorObject } from "ajv";
 import Fuse from "fuse.js";
@@ -147,7 +147,7 @@ export interface PromptSearchResult {
 export class PromptIndex {
   private records = new Map<string, PromptRecord>();
   private fuse: Fuse<PromptRecord> | null = null;
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: ReturnType<typeof watch> | null = null;
   private initialized = false;
   private listeners = new Set<() => void>();
 
@@ -179,7 +179,7 @@ export class PromptIndex {
   }
 
   async dispose(): Promise<void> {
-    await this.watcher?.close();
+    this.watcher?.close();
     this.watcher = null;
     this.records.clear();
     this.fuse = null;
@@ -319,25 +319,44 @@ export class PromptIndex {
       return;
     }
 
-    this.watcher = chokidar.watch(this.root, {
-      ignoreInitial: true,
-      awaitWriteFinish: {
-        stabilityThreshold: 200,
-        pollInterval: 100,
-      },
-    });
+    try {
+      this.watcher = watch(
+        this.root,
+        {
+          recursive: true,
+        },
+        async (eventType, filename) => {
+          if (!filename) {
+            return;
+          }
 
-    const handleChange = async (filePath: string) => {
-      await this.ingestFile(filePath, true);
-      this.rebuildSearchIndex();
-      this.emitUpdated();
-    };
+          const filePath = path.join(this.root, filename);
 
-    this.watcher
-      .on("add", handleChange)
-      .on("change", handleChange)
-      .on("unlink", (filePath) => this.removeFile(filePath))
-      .on("error", (error) => console.error("Prompt watcher error", error));
+          if (eventType === "rename") {
+            try {
+              await this.ingestFile(filePath, true);
+              this.rebuildSearchIndex();
+              this.emitUpdated();
+            } catch {
+              this.removeFile(filePath);
+            }
+            return;
+          }
+
+          if (eventType === "change") {
+            await this.ingestFile(filePath, true);
+            this.rebuildSearchIndex();
+            this.emitUpdated();
+          }
+        },
+      );
+
+      this.watcher.on("error", (error) =>
+        console.error("Prompt watcher error", error),
+      );
+    } catch (error) {
+      console.error("Failed to start prompt watcher", error);
+    }
   }
 }
 
