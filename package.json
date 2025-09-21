@@ -21,97 +21,110 @@
     "@types/node": "^20.10.6",
     "typescript": "^5.3.3"
   },
-  "schemaVersion": 1,
-  "title": "MnemonicForge",
-  "icon": "assets/icon.png",
-  "author": "MnemonicForge Team",
-  "categories": [
-    "productivity"
-  ],
-  "commands": [
-    {
-      "name": "browse-prompts",
-      "title": "Browse Prompts",
-      "subtitle": "MnemonicForge",
-      "description": "Search your MnemonicForge prompt library.",
-      "mode": "view"
-    },
-    {
-      "name": "run-prompt",
-      "title": "Run Prompt",
-      "subtitle": "MnemonicForge",
-      "description": "Fill parameters and generate a prompt output.",
-      "mode": "view"
-    }
-  ],
-  "preferences": [
-    {
-      "name": "promptsPath",
-      "title": "Prompts Folder",
-      "description": "Absolute path to the prompt_templates directory.",
-      "type": "textfield",
-      "placeholder": "/Users/you/Projects/MnemonicForge/prompt_templates",
-      "required": true
-    },
-    {
-      "name": "pasteAfterCopy",
-      "title": "Paste After Copy",
-      "type": "checkbox",
-      "default": true
-    },
-    {
-      "name": "enableSend",
-      "title": "Enable OpenAI Send",
-      "type": "checkbox",
-      "default": false
-    },
-    {
-      "name": "openaiModel",
-      "title": "Default OpenAI Model",
-      "type": "textfield",
-      "placeholder": "gpt-4.1-mini"
-    },
-    {
-      "name": "openaiTemperature",
-      "title": "Default Temperature",
-      "type": "textfield",
-      "placeholder": "0.2"
-    },
-    {
-      "name": "openaiMaxTokens",
-      "title": "Default Max Tokens",
-      "type": "textfield",
-      "placeholder": "1024"
-    },
-    {
-      "name": "contextDefaultClipboard",
-      "title": "Capture Clipboard by Default",
-      "type": "checkbox",
-      "default": false
-    },
-    {
-      "name": "contextDefaultSelection",
-      "title": "Capture Selected Text by Default",
-      "type": "checkbox",
-      "default": false
-    },
-    {
-      "name": "contextDefaultApp",
-      "title": "Capture Frontmost App by Default",
-      "type": "checkbox",
-      "default": false
-    },
-    {
-      "name": "contextDefaultDate",
-      "title": "Capture Current Date by Default",
-      "type": "checkbox",
-      "default": false
-    },
-    {
-      "name": "debugLog",
-      "title": "Enable Debug Logging",
-      "type": "checkbox",
-      "default": false
-    }
-  ]
+  "raycast": {
+    "schemaVersion": 1,
+    "title": "MnemonicForge",
+    "description": "Browse, parameterize, and run prompts from your MnemonicForge library.",
+    "icon": "assets/icon.png",
+    "author": "MnemonicForge Team",
+    "categories": [
+      "productivity"
+    ],
+    "commands": [
+      {
+        "name": "browse-prompts",
+        "title": "Browse Prompts",
+        "subtitle": "MnemonicForge",
+        "description": "Search your MnemonicForge prompt library.",
+        "mode": "view"
+      },
+      {
+        "name": "run-prompt",
+        "title": "Run Prompt",
+        "subtitle": "MnemonicForge",
+        "description": "Fill parameters and generate a prompt output.",
+        "mode": "view"
+      }
+    ],
+    "preferences": [
+      {
+        "name": "promptsPath",
+        "title": "Prompts Folder",
+        "description": "Absolute path to your prompt_templates directory (e.g., /Users/you/.../prompt_templates).",
+        "type": "textfield",
+        "placeholder": "/Users/you/Projects/MnemonicForge/prompt_templates",
+        "required": true
+      },
+      {
+        "name": "pasteAfterCopy",
+        "title": "Paste After Copy",
+        "description": "Automatically paste rendered output after it is copied.",
+        "type": "checkbox",
+        "default": true
+      },
+      {
+        "name": "enableSend",
+        "title": "Enable OpenAI Send",
+        "description": "Allow prompts to be sent directly to OpenAI when ⌘↵ is pressed.",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "name": "openaiModel",
+        "title": "Default OpenAI Model",
+        "description": "Model name used when sending prompts (overridden by prompt metadata).",
+        "type": "textfield",
+        "placeholder": "gpt-4.1-mini"
+      },
+      {
+        "name": "openaiTemperature",
+        "title": "Default Temperature",
+        "description": "Temperature value used for OpenAI sends when not specified in a prompt.",
+        "type": "textfield",
+        "placeholder": "0.2"
+      },
+      {
+        "name": "openaiMaxTokens",
+        "title": "Default Max Tokens",
+        "description": "Maximum tokens requested from OpenAI when not set in a prompt.",
+        "type": "textfield",
+        "placeholder": "1024"
+      },
+      {
+        "name": "contextDefaultClipboard",
+        "title": "Capture Clipboard by Default",
+        "description": "Include current clipboard text in the contextual data sent to prompts.",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "name": "contextDefaultSelection",
+        "title": "Capture Selected Text by Default",
+        "description": "Automatically capture the current text selection as context.",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "name": "contextDefaultApp",
+        "title": "Capture Frontmost App by Default",
+        "description": "Include the name and bundle ID of the active application in context.",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "name": "contextDefaultDate",
+        "title": "Capture Current Date by Default",
+        "description": "Add the current ISO8601 timestamp to the prompt context.",
+        "type": "checkbox",
+        "default": false
+      },
+      {
+        "name": "debugLog",
+        "title": "Enable Debug Logging",
+        "description": "Emit verbose logs to Raycast console for troubleshooting.",
+        "type": "checkbox",
+        "default": false
+      }
+    ]
+  }
 }
