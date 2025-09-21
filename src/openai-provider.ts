@@ -35,9 +35,13 @@ export async function sendPromptToOpenAI(options: SendPromptOptions): Promise<Se
   }
 
   const model = options.frontMatter.model?.name ?? preferences.openaiModel ?? DEFAULT_MODEL;
-  const temperature = parseFloat(options.frontMatter.model?.temperature?.toString() ?? preferences.openaiTemperature ?? "0.2");
-  const maxTokensPreference = options.frontMatter.model?.max_tokens ?? Number(preferences.openaiMaxTokens);
-  const maxOutputTokens = Number.isFinite(maxTokensPreference) ? Number(maxTokensPreference) : 1024;
+  const rawTemperature = options.frontMatter.model?.temperature ?? preferences.openaiTemperature;
+  const parsedTemperature = typeof rawTemperature === "number" ? rawTemperature : parseFloat(rawTemperature ?? "");
+  const temperature = Number.isFinite(parsedTemperature) ? parsedTemperature : 0.2;
+
+  const rawMaxTokens = options.frontMatter.model?.max_tokens ?? preferences.openaiMaxTokens;
+  const parsedMaxTokens = typeof rawMaxTokens === "number" ? rawMaxTokens : Number(rawMaxTokens ?? "");
+  const maxOutputTokens = Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 512;
 
   const requestBody = {
     model,
