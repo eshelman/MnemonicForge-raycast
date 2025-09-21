@@ -7,6 +7,11 @@ import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
+import {
+  getStoredOpenAIKey,
+  removeStoredOpenAIKey,
+  setStoredOpenAIKey,
+} from "./openai-keychain";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
@@ -36,12 +41,22 @@ export default function RunPromptCommand() {
   >(null);
   const [isSending, setIsSending] = useState(false);
   const [lastContextSummary, setLastContextSummary] = useState<string | null>(null);
+  const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
 
   useEffect(() => {
     if (error && promptsPath) {
       showToast({ style: Toast.Style.Failure, title: "Prompt index unavailable", message: error });
     }
   }, [error, promptsPath]);
+
+  useEffect(() => {
+    refreshOpenAIKeyPresence();
+  }, []);
+
+  async function refreshOpenAIKeyPresence() {
+    const key = await getStoredOpenAIKey();
+    setHasOpenAIKey(Boolean(key));
+  }
 
   useEffect(() => {
     if (!records.length) {
@@ -124,6 +139,7 @@ export default function RunPromptCommand() {
       const timestamped = { ...prepared.rendered, renderedAt: new Date() };
       setLastRendered(timestamped);
       setLastSendResult(null);
+      refreshOpenAIKeyPresence();
 
       if (options.copy) {
         await Clipboard.copy(timestamped.output);
@@ -178,6 +194,7 @@ export default function RunPromptCommand() {
       });
 
       setLastSendResult({ prompt: timestamped, response });
+      refreshOpenAIKeyPresence();
 
       toast.style = Toast.Style.Success;
       toast.title = "Sent to OpenAI";
@@ -249,6 +266,11 @@ export default function RunPromptCommand() {
               target={<SendResultPreview result={lastSendResult} />}
             />
           ) : null}
+          <Action.Push
+            title="Manage OpenAI API Key"
+            shortcut={{ modifiers: ["cmd"], key: "k" }}
+            target={<ManageOpenAIKeyForm onUpdated={(present) => setHasOpenAIKey(present)} />}
+          />
         </ActionPanel>
       }
     >
@@ -274,6 +296,10 @@ export default function RunPromptCommand() {
       <Form.Description title="Prompts Folder" text={promptsPath ?? "Not configured"} />
       <Form.Description title="Paste After Copy" text={pasteAfterCopy ? "Enabled" : "Disabled"} />
       <Form.Description title="OpenAI Send" text={enableSend ? "Enabled" : "Disabled"} />
+      <Form.Description
+        title="OpenAI API Key"
+        text={hasOpenAIKey ? "Stored in Raycast local storage" : "Not configured"}
+      />
 
       {selectedRecord ? (
         <Form.Description
@@ -592,5 +618,64 @@ function SendResultPreview({
         </Detail.Metadata>
       }
     />
+  );
+}
+
+function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => void }) {
+  const [hasKey, setHasKey] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  useEffect(() => {
+    getStoredOpenAIKey().then((key) => {
+      setHasKey(Boolean(key));
+    });
+  }, []);
+
+  async function handleSubmit(values: { apiKey?: string }) {
+    const apiKey = values.apiKey?.trim();
+    if (!apiKey) {
+      await showToast({ style: Toast.Style.Failure, title: "Enter an API key" });
+      return;
+    }
+
+    await setStoredOpenAIKey(apiKey);
+    setHasKey(true);
+    onUpdated(true);
+    await showToast({ style: Toast.Style.Success, title: "API key saved" });
+  }
+
+  async function handleRemove() {
+    setIsRemoving(true);
+    try {
+      await removeStoredOpenAIKey();
+      setHasKey(false);
+      onUpdated(false);
+      await showToast({ style: Toast.Style.Success, title: "API key removed" });
+    } finally {
+      setIsRemoving(false);
+    }
+  }
+
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Save API Key" onSubmit={handleSubmit} />
+          {hasKey ? (
+            <Action
+              title={isRemoving ? "Removing…" : "Remove Stored Key"}
+              onAction={handleRemove}
+              style={Action.Style.Destructive}
+            />
+          ) : null}
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Status"
+        text={hasKey ? "Key stored in Raycast local storage." : "No key stored."}
+      />
+      <Form.PasswordField id="apiKey" title="OpenAI API Key" placeholder="sk-..." />
+    </Form>
   );
 }

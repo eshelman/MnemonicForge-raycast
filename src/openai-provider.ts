@@ -1,5 +1,6 @@
 import { getPreferenceValues } from "@raycast/api";
 import { PromptFrontMatter } from "./prompt-types";
+import { getStoredOpenAIKey } from "./openai-keychain";
 
 export interface SendPromptOptions {
   prompt: string;
@@ -27,9 +28,10 @@ export async function sendPromptToOpenAI(options: SendPromptOptions): Promise<Se
     throw new Error("Sending is disabled in preferences.");
   }
 
-  const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  const storedKey = await getStoredOpenAIKey();
+  const apiKey = storedKey || process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
   if (!apiKey) {
-    throw new Error("OpenAI API key not configured. Set OPENAI_API_KEY in your environment.");
+    throw new Error("OpenAI API key not configured. Use the Manage API Key action to add one.");
   }
 
   const model = options.frontMatter.model?.name ?? preferences.openaiModel ?? DEFAULT_MODEL;
