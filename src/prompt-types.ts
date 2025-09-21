@@ -1,4 +1,11 @@
-export type PromptParameterType = "string" | "text" | "enum" | "number" | "boolean" | "date" | "array";
+export type PromptParameterType =
+  | "string"
+  | "text"
+  | "enum"
+  | "number"
+  | "boolean"
+  | "date"
+  | "array";
 
 export interface PromptParameter {
   name: string;

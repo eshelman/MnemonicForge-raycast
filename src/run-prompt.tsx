@@ -1,4 +1,13 @@
-import { Action, ActionPanel, Clipboard, Detail, Form, Icon, Toast, showToast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Clipboard,
+  Detail,
+  Form,
+  Icon,
+  Toast,
+  showToast,
+} from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import { getExtensionPreferences } from "./preferences";
 import { PromptParameter, PromptRecord } from "./prompt-types";
@@ -31,21 +40,26 @@ export default function RunPromptCommand() {
   } = preferences;
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
-  const [lastRendered, setLastRendered] = useState<(RenderedPrompt & { renderedAt: Date }) | null>(null);
-  const [lastSendResult, setLastSendResult] = useState<
-    | {
-        prompt: RenderedPrompt & { renderedAt: Date };
-        response: SendPromptResult;
-      }
-    | null
+  const [lastRendered, setLastRendered] = useState<
+    (RenderedPrompt & { renderedAt: Date }) | null
   >(null);
+  const [lastSendResult, setLastSendResult] = useState<{
+    prompt: RenderedPrompt & { renderedAt: Date };
+    response: SendPromptResult;
+  } | null>(null);
   const [isSending, setIsSending] = useState(false);
-  const [lastContextSummary, setLastContextSummary] = useState<string | null>(null);
+  const [lastContextSummary, setLastContextSummary] = useState<string | null>(
+    null,
+  );
   const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
 
   useEffect(() => {
     if (error && promptsPath) {
-      showToast({ style: Toast.Style.Failure, title: "Prompt index unavailable", message: error });
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Prompt index unavailable",
+        message: error,
+      });
     }
   }, [error, promptsPath]);
 
@@ -69,7 +83,9 @@ export default function RunPromptCommand() {
       return;
     }
 
-    const stillPresent = records.some((record) => record.id === selectedPromptId);
+    const stillPresent = records.some(
+      (record) => record.id === selectedPromptId,
+    );
     if (!stillPresent) {
       setSelectedPromptId(records[0]?.id ?? null);
     }
@@ -77,23 +93,30 @@ export default function RunPromptCommand() {
 
   const selectedRecord: PromptRecord | undefined = useMemo(
     () => records.find((record) => record.id === selectedPromptId),
-    [records, selectedPromptId]
+    [records, selectedPromptId],
   );
 
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
   const formKey = selectedPromptId ?? "no-prompt";
 
   const prepareRender = async (values: RunPromptFormValues) => {
-    const promptId = (values.promptId as string | undefined) ?? selectedPromptId ?? undefined;
+    const promptId =
+      (values.promptId as string | undefined) ?? selectedPromptId ?? undefined;
     const record = records.find((item) => item.id === promptId);
 
     if (!record) {
-      await showToast({ style: Toast.Style.Failure, title: "Select a prompt first" });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Select a prompt first",
+      });
       return;
     }
 
     if (!record.frontMatter || record.validationIssues.length) {
-      await showToast({ style: Toast.Style.Failure, title: "Prompt metadata incomplete" });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Prompt metadata incomplete",
+      });
       return;
     }
 
@@ -128,7 +151,7 @@ export default function RunPromptCommand() {
 
   const handleSubmit = async (
     values: RunPromptFormValues,
-    options: { copy: boolean; paste: boolean }
+    options: { copy: boolean; paste: boolean },
   ) => {
     try {
       const prepared = await prepareRender(values);
@@ -155,7 +178,9 @@ export default function RunPromptCommand() {
       await showToast({
         style: Toast.Style.Success,
         title: "Prompt ready",
-        message: options.copy ? "Copied to clipboard" : "Rendered without copying",
+        message: options.copy
+          ? "Copied to clipboard"
+          : "Rendered without copying",
       });
 
       console.debug("Prompt rendered", {
@@ -164,19 +189,30 @@ export default function RunPromptCommand() {
         context: prepared.promptContext,
       });
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Failed to render prompt";
-      await showToast({ style: Toast.Style.Failure, title: "Render failed", message });
+      const message =
+        caught instanceof Error ? caught.message : "Failed to render prompt";
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Render failed",
+        message,
+      });
     }
   };
 
   const handleSend = async (values: RunPromptFormValues) => {
     if (isSending) {
-      await showToast({ style: Toast.Style.Animated, title: "Send already in progress" });
+      await showToast({
+        style: Toast.Style.Animated,
+        title: "Send already in progress",
+      });
       return;
     }
 
     setIsSending(true);
-    const toast = await showToast({ style: Toast.Style.Animated, title: "Sending to OpenAI" });
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: "Sending to OpenAI",
+    });
     try {
       const prepared = await prepareRender(values);
       if (!prepared) {
@@ -198,9 +234,12 @@ export default function RunPromptCommand() {
 
       toast.style = Toast.Style.Success;
       toast.title = "Sent to OpenAI";
-      toast.message = response.tokensUsed ? `${response.tokensUsed} tokens` : undefined;
+      toast.message = response.tokensUsed
+        ? `${response.tokensUsed} tokens`
+        : undefined;
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Failed to send prompt";
+      const message =
+        caught instanceof Error ? caught.message : "Failed to send prompt";
       toast.style = Toast.Style.Failure;
       toast.title = "Send failed";
       toast.message = message;
@@ -217,27 +256,40 @@ export default function RunPromptCommand() {
         <ActionPanel>
           <Action.SubmitForm
             title="Render & Copy"
-            onSubmit={(values) => handleSubmit(values, { copy: true, paste: pasteAfterCopy })}
+            onSubmit={(values) =>
+              handleSubmit(values, { copy: true, paste: pasteAfterCopy })
+            }
           />
           <Action.SubmitForm
             title="Render (Copy Only)"
             shortcut={{ modifiers: ["opt"], key: "enter" }}
-            onSubmit={(values) => handleSubmit(values, { copy: true, paste: false })}
+            onSubmit={(values) =>
+              handleSubmit(values, { copy: true, paste: false })
+            }
           />
           <Action.SubmitForm
             title="Render Without Copy"
             shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
-            onSubmit={(values) => handleSubmit(values, { copy: false, paste: false })}
+            onSubmit={(values) =>
+              handleSubmit(values, { copy: false, paste: false })
+            }
           />
           {enableSend ? (
             <Action.SubmitForm
-              title={isSending ? "Sending…" : "Send with OpenAI"}
+              title={isSending ? "Sending…" : "Send with Openai"}
               shortcut={{ modifiers: ["cmd"], key: "enter" }}
               onSubmit={handleSend}
             />
           ) : null}
-          {selectedRecord ? <Action.Open title="Open Prompt" target={selectedRecord.filePath} /> : null}
-          {selectedRecord ? <Action.ShowInFinder title="Reveal in Finder" path={selectedRecord.filePath} /> : null}
+          {selectedRecord ? (
+            <Action.Open title="Open Prompt" target={selectedRecord.filePath} />
+          ) : null}
+          {selectedRecord ? (
+            <Action.ShowInFinder
+              title="Reveal in Finder"
+              path={selectedRecord.filePath}
+            />
+          ) : null}
           {lastRendered ? (
             <Action.CopyToClipboard
               title="Copy Last Output"
@@ -267,9 +319,13 @@ export default function RunPromptCommand() {
             />
           ) : null}
           <Action.Push
-            title="Manage OpenAI API Key"
+            title="Manage Openai Key"
             shortcut={{ modifiers: ["cmd"], key: "k" }}
-            target={<ManageOpenAIKeyForm onUpdated={(present) => setHasOpenAIKey(present)} />}
+            target={
+              <ManageOpenAIKeyForm
+                onUpdated={(present) => setHasOpenAIKey(present)}
+              />
+            }
           />
         </ActionPanel>
       }
@@ -293,21 +349,38 @@ export default function RunPromptCommand() {
         ))}
       </Form.Dropdown>
 
-      <Form.Description title="Prompts Folder" text={promptsPath ?? "Not configured"} />
-      <Form.Description title="Paste After Copy" text={pasteAfterCopy ? "Enabled" : "Disabled"} />
-      <Form.Description title="OpenAI Send" text={enableSend ? "Enabled" : "Disabled"} />
+      <Form.Description
+        title="Prompts Folder"
+        text={promptsPath ?? "Not configured"}
+      />
+      <Form.Description
+        title="Paste After Copy"
+        text={pasteAfterCopy ? "Enabled" : "Disabled"}
+      />
+      <Form.Description
+        title="OpenAI Send"
+        text={enableSend ? "Enabled" : "Disabled"}
+      />
       <Form.Description
         title="OpenAI API Key"
-        text={hasOpenAIKey ? "Stored in Raycast local storage" : "Not configured"}
+        text={
+          hasOpenAIKey ? "Stored in Raycast local storage" : "Not configured"
+        }
       />
 
       {selectedRecord ? (
         <Form.Description
           title="Selected Prompt"
-          text={selectedRecord.frontMatter?.description ?? selectedRecord.excerpt.slice(0, 140)}
+          text={
+            selectedRecord.frontMatter?.description ??
+            selectedRecord.excerpt.slice(0, 140)
+          }
         />
       ) : (
-        <Form.Description title="Selected Prompt" text="Choose a prompt to configure parameters." />
+        <Form.Description
+          title="Selected Prompt"
+          text="Choose a prompt to configure parameters."
+        />
       )}
 
       {lastContextSummary ? (
@@ -317,14 +390,19 @@ export default function RunPromptCommand() {
       {selectedRecord?.validationIssues.length ? (
         <Form.Description
           title="Metadata Issues"
-          text={selectedRecord.validationIssues.map((issue) => issue.message).join("\n")}
+          text={selectedRecord.validationIssues
+            .map((issue) => issue.message)
+            .join("\n")}
         />
       ) : null}
 
       <Form.Separator />
 
       {parameterFields.length === 0 ? (
-        <Form.Description title="Parameters" text="This prompt does not declare any parameters." />
+        <Form.Description
+          title="Parameters"
+          text="This prompt does not declare any parameters."
+        />
       ) : (
         parameterFields.map((parameter) => renderParameterField(parameter))
       )}
@@ -356,7 +434,7 @@ export default function RunPromptCommand() {
 
 function collectParameters(
   record: PromptRecord,
-  values: RunPromptFormValues
+  values: RunPromptFormValues,
 ): { collected: Record<string, unknown>; missing: PromptParameter[] } {
   const parameters = record.frontMatter?.parameters ?? [];
   const collected: Record<string, unknown> = {};
@@ -423,7 +501,12 @@ function renderParameterField(parameter: PromptParameter) {
     case "boolean": {
       const defaultValue = Boolean(parameter.default);
       return (
-        <Form.Checkbox key={fieldId} id={fieldId} label={title} defaultValue={defaultValue} />
+        <Form.Checkbox
+          key={fieldId}
+          id={fieldId}
+          label={title}
+          defaultValue={defaultValue}
+        />
       );
     }
     case "number": {
@@ -468,7 +551,11 @@ function renderParameterField(parameter: PromptParameter) {
   }
 }
 
-function renderFallbackTextField(fieldId: string, title: string, parameter: PromptParameter) {
+function renderFallbackTextField(
+  fieldId: string,
+  title: string,
+  parameter: PromptParameter,
+) {
   const defaultValue = stringifyDefault(parameter.default);
   return (
     <Form.TextField
@@ -519,7 +606,10 @@ function dateFromDefault(value: unknown): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-function normalizeParameterValue(parameter: PromptParameter, rawValue: unknown): unknown {
+function normalizeParameterValue(
+  parameter: PromptParameter,
+  rawValue: unknown,
+): unknown {
   switch (parameter.type) {
     case "boolean":
       return Boolean(rawValue);
@@ -568,9 +658,15 @@ function PromptPreview({ rendered }: { rendered: RenderedPrompt }) {
       metadata={
         <Detail.Metadata>
           {rendered.metadata.description ? (
-            <Detail.Metadata.Label title="Description" text={rendered.metadata.description} />
+            <Detail.Metadata.Label
+              title="Description"
+              text={rendered.metadata.description}
+            />
           ) : null}
-          <Detail.Metadata.Label title="Source" text={rendered.metadata.sourcePath} />
+          <Detail.Metadata.Label
+            title="Source"
+            text={rendered.metadata.sourcePath}
+          />
           {rendered.metadata.tags.length ? (
             <Detail.Metadata.TagList title="Tags">
               {rendered.metadata.tags.map((tag) => (
@@ -604,9 +700,15 @@ function SendResultPreview({
       markdown={markdown}
       metadata={
         <Detail.Metadata>
-          <Detail.Metadata.Label title="Sent" text={result.prompt.renderedAt.toLocaleString()} />
+          <Detail.Metadata.Label
+            title="Sent"
+            text={result.prompt.renderedAt.toLocaleString()}
+          />
           {result.response.tokensUsed ? (
-            <Detail.Metadata.Label title="Tokens" text={String(result.response.tokensUsed)} />
+            <Detail.Metadata.Label
+              title="Tokens"
+              text={String(result.response.tokensUsed)}
+            />
           ) : null}
           {result.prompt.metadata.tags.length ? (
             <Detail.Metadata.TagList title="Tags">
@@ -621,7 +723,11 @@ function SendResultPreview({
   );
 }
 
-function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => void }) {
+function ManageOpenAIKeyForm({
+  onUpdated,
+}: {
+  onUpdated: (present: boolean) => void;
+}) {
   const [hasKey, setHasKey] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
 
@@ -634,14 +740,17 @@ function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => v
   async function handleSubmit(values: { apiKey?: string }) {
     const apiKey = values.apiKey?.trim();
     if (!apiKey) {
-      await showToast({ style: Toast.Style.Failure, title: "Enter an API key" });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Enter an API key",
+      });
       return;
     }
 
     await setStoredOpenAIKey(apiKey);
     setHasKey(true);
     onUpdated(true);
-    await showToast({ style: Toast.Style.Success, title: "API key saved" });
+    await showToast({ style: Toast.Style.Success, title: "OpenAI key saved" });
   }
 
   async function handleRemove() {
@@ -650,7 +759,10 @@ function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => v
       await removeStoredOpenAIKey();
       setHasKey(false);
       onUpdated(false);
-      await showToast({ style: Toast.Style.Success, title: "API key removed" });
+      await showToast({
+        style: Toast.Style.Success,
+        title: "OpenAI key removed",
+      });
     } finally {
       setIsRemoving(false);
     }
@@ -660,10 +772,10 @@ function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => v
     <Form
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Save API Key" onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Save Openai Key" onSubmit={handleSubmit} />
           {hasKey ? (
             <Action
-              title={isRemoving ? "Removing…" : "Remove Stored Key"}
+              title={isRemoving ? "Removing…" : "Remove Openai Key"}
               onAction={handleRemove}
               style={Action.Style.Destructive}
             />
@@ -673,9 +785,15 @@ function ManageOpenAIKeyForm({ onUpdated }: { onUpdated: (present: boolean) => v
     >
       <Form.Description
         title="Status"
-        text={hasKey ? "Key stored in Raycast local storage." : "No key stored."}
+        text={
+          hasKey ? "Key stored in Raycast local storage." : "No key stored."
+        }
       />
-      <Form.PasswordField id="apiKey" title="OpenAI API Key" placeholder="sk-..." />
+      <Form.PasswordField
+        id="apiKey"
+        title="OpenAI API Key"
+        placeholder="sk-..."
+      />
     </Form>
   );
 }

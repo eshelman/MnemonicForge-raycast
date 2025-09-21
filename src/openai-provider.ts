@@ -22,26 +22,45 @@ interface ProviderPreferences {
 
 const DEFAULT_MODEL = "gpt-4.1-mini";
 
-export async function sendPromptToOpenAI(options: SendPromptOptions): Promise<SendPromptResult> {
+export async function sendPromptToOpenAI(
+  options: SendPromptOptions,
+): Promise<SendPromptResult> {
   const preferences = getPreferenceValues<ProviderPreferences>();
   if (!preferences.enableSend) {
     throw new Error("Sending is disabled in preferences.");
   }
 
   const storedKey = await getStoredOpenAIKey();
-  const apiKey = storedKey || process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+  const apiKey =
+    storedKey || process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
   if (!apiKey) {
-    throw new Error("OpenAI API key not configured. Use the Manage API Key action to add one.");
+    throw new Error(
+      "OpenAI API key not configured. Use the Manage API Key action to add one.",
+    );
   }
 
-  const model = options.frontMatter.model?.name ?? preferences.openaiModel ?? DEFAULT_MODEL;
-  const rawTemperature = options.frontMatter.model?.temperature ?? preferences.openaiTemperature;
-  const parsedTemperature = typeof rawTemperature === "number" ? rawTemperature : parseFloat(rawTemperature ?? "");
-  const temperature = Number.isFinite(parsedTemperature) ? parsedTemperature : 0.2;
+  const model =
+    options.frontMatter.model?.name ?? preferences.openaiModel ?? DEFAULT_MODEL;
+  const rawTemperature =
+    options.frontMatter.model?.temperature ?? preferences.openaiTemperature;
+  const parsedTemperature =
+    typeof rawTemperature === "number"
+      ? rawTemperature
+      : parseFloat(rawTemperature ?? "");
+  const temperature = Number.isFinite(parsedTemperature)
+    ? parsedTemperature
+    : 0.2;
 
-  const rawMaxTokens = options.frontMatter.model?.max_tokens ?? preferences.openaiMaxTokens;
-  const parsedMaxTokens = typeof rawMaxTokens === "number" ? rawMaxTokens : Number(rawMaxTokens ?? "");
-  const maxOutputTokens = Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0 ? parsedMaxTokens : 512;
+  const rawMaxTokens =
+    options.frontMatter.model?.max_tokens ?? preferences.openaiMaxTokens;
+  const parsedMaxTokens =
+    typeof rawMaxTokens === "number"
+      ? rawMaxTokens
+      : Number(rawMaxTokens ?? "");
+  const maxOutputTokens =
+    Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0
+      ? parsedMaxTokens
+      : 512;
 
   const requestBody = {
     model,
@@ -86,7 +105,7 @@ async function safeReadError(response: Response): Promise<string> {
   try {
     const text = await response.text();
     return text.slice(0, 500);
-  } catch (error) {
+  } catch {
     return response.statusText;
   }
 }

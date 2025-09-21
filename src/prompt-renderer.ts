@@ -25,8 +25,12 @@ function ensureHelpersRegistered() {
     return;
   }
 
-  handlebars.registerHelper("uppercase", (value: unknown) => String(value ?? "").toUpperCase());
-  handlebars.registerHelper("lowercase", (value: unknown) => String(value ?? "").toLowerCase());
+  handlebars.registerHelper("uppercase", (value: unknown) =>
+    String(value ?? "").toUpperCase(),
+  );
+  handlebars.registerHelper("lowercase", (value: unknown) =>
+    String(value ?? "").toLowerCase(),
+  );
   handlebars.registerHelper("join", (value: unknown, delimiter = ", ") => {
     if (!Array.isArray(value)) {
       return String(value ?? "");
@@ -40,24 +44,37 @@ function ensureHelpersRegistered() {
       .map((line) => `${padding}${line}`)
       .join("\n");
   });
-  handlebars.registerHelper("nl2br", (value: unknown) => String(value ?? "").replace(/\n/g, "<br />"));
-  handlebars.registerHelper("date", (value: unknown, locale = "en-US", options?: Intl.DateTimeFormatOptions) => {
-    const date = value instanceof Date ? value : new Date(String(value ?? ""));
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
-    try {
-      return new Intl.DateTimeFormat(String(locale), options).format(date);
-    } catch (error) {
-      console.error("Date helper failed", error);
-      return date.toISOString();
-    }
-  });
+  handlebars.registerHelper("nl2br", (value: unknown) =>
+    String(value ?? "").replace(/\n/g, "<br />"),
+  );
+  handlebars.registerHelper(
+    "date",
+    (
+      value: unknown,
+      locale = "en-US",
+      options?: Intl.DateTimeFormatOptions,
+    ) => {
+      const date =
+        value instanceof Date ? value : new Date(String(value ?? ""));
+      if (Number.isNaN(date.getTime())) {
+        return "";
+      }
+      try {
+        return new Intl.DateTimeFormat(String(locale), options).format(date);
+      } catch (error) {
+        console.error("Date helper failed", error);
+        return date.toISOString();
+      }
+    },
+  );
 
   helpersRegistered = true;
 }
 
-export function renderPrompt(record: PromptRecord, options: RenderPromptOptions): RenderedPrompt {
+export function renderPrompt(
+  record: PromptRecord,
+  options: RenderPromptOptions,
+): RenderedPrompt {
   if (!record.frontMatter) {
     throw new Error("Prompt is missing front matter and cannot be rendered.");
   }
@@ -98,10 +115,13 @@ function postProcessOutput(text: string): string {
     .map((line) => line.replace(/[ \t]+$/u, ""))
     .join("\n");
 
-  const normalizedFences = strippedTrailingWhitespace.replace(/```([^\n]*)[ \t]+\n/g, (match, lang) => {
-    const cleaned = lang.trim();
-    return cleaned ? `\`\`\`${cleaned}\n` : "```\n";
-  });
+  const normalizedFences = strippedTrailingWhitespace.replace(
+    /```([^\n]*)[ \t]+\n/g,
+    (match, lang) => {
+      const cleaned = lang.trim();
+      return cleaned ? `\`\`\`${cleaned}\n` : "```\n";
+    },
+  );
 
   const trimmed = normalizedFences.replace(/\s+$/u, "").trimEnd();
 

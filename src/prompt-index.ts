@@ -11,7 +11,14 @@ import {
   PromptValidationIssue,
 } from "./prompt-types";
 
-const VALID_EXTENSIONS = new Set([".md", ".markdown", ".mdx", ".txt", ".yaml", ".yml"]);
+const VALID_EXTENSIONS = new Set([
+  ".md",
+  ".markdown",
+  ".mdx",
+  ".txt",
+  ".yaml",
+  ".yml",
+]);
 
 const ajv = new Ajv({ allErrors: true, strict: false });
 const validateFrontMatter = ajv.compile(schema);
@@ -42,7 +49,9 @@ function buildExcerpt(content: string, maxLength = 260): string {
   return `${clean.slice(0, maxLength - 1)}…`;
 }
 
-function collectIssues(errors: ErrorObject[] | null | undefined): PromptValidationIssue[] {
+function collectIssues(
+  errors: ErrorObject[] | null | undefined,
+): PromptValidationIssue[] {
   if (!errors) {
     return [];
   }
@@ -53,7 +62,10 @@ function collectIssues(errors: ErrorObject[] | null | undefined): PromptValidati
   }));
 }
 
-async function walkDirectory(root: string, callback: (filePath: string) => Promise<void>): Promise<void> {
+async function walkDirectory(
+  root: string,
+  callback: (filePath: string) => Promise<void>,
+): Promise<void> {
   const entries = await readdir(root, { withFileTypes: true });
   await Promise.all(
     entries.map(async (entry) => {
@@ -76,11 +88,14 @@ async function walkDirectory(root: string, callback: (filePath: string) => Promi
       }
 
       await callback(fullPath);
-    })
+    }),
   );
 }
 
-function deriveTags(relativePath: string, frontMatter?: PromptFrontMatter): string[] {
+function deriveTags(
+  relativePath: string,
+  frontMatter?: PromptFrontMatter,
+): string[] {
   const segments = relativePath.split(path.sep).slice(0, -1);
   const folderTags = segments
     .map(toTag)
@@ -106,7 +121,7 @@ function buildRecord(
   modifiedAt: Date,
   content: string,
   frontMatter?: PromptFrontMatter,
-  validationIssues: PromptValidationIssue[] = []
+  validationIssues: PromptValidationIssue[] = [],
 ): PromptRecord {
   const excerpt = buildExcerpt(content);
   const tags = deriveTags(relativePath, frontMatter);
@@ -172,7 +187,9 @@ export class PromptIndex {
   }
 
   getAll(): PromptRecord[] {
-    return [...this.records.values()].sort((a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime());
+    return [...this.records.values()].sort(
+      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime(),
+    );
   }
 
   subscribe(listener: () => void): () => void {
@@ -234,7 +251,10 @@ export class PromptIndex {
     }
   }
 
-  private async ingestFile(filePath: string, silenceUpdate = false): Promise<void> {
+  private async ingestFile(
+    filePath: string,
+    silenceUpdate = false,
+  ): Promise<void> {
     try {
       const fileStats = await stat(filePath);
       if (!fileStats.isFile()) {
@@ -275,7 +295,7 @@ export class PromptIndex {
         fileStats.mtime,
         parsed.content,
         frontMatter,
-        validationIssues
+        validationIssues,
       );
 
       this.records.set(filePath, record);
@@ -323,7 +343,9 @@ export class PromptIndex {
 
 const indices = new Map<string, PromptIndex>();
 
-export async function getPromptIndex(promptsPath: string): Promise<PromptIndex> {
+export async function getPromptIndex(
+  promptsPath: string,
+): Promise<PromptIndex> {
   const normalizedRoot = path.resolve(promptsPath);
   let index = indices.get(normalizedRoot);
 

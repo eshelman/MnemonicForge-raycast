@@ -1,4 +1,8 @@
-import { getFrontmostApplication, getSelectedText, Clipboard } from "@raycast/api";
+import {
+  getFrontmostApplication,
+  getSelectedText,
+  Clipboard,
+} from "@raycast/api";
 
 export interface PromptContext {
   clipboard?: string;
@@ -18,7 +22,9 @@ export interface ContextPreferences {
   date: boolean;
 }
 
-export async function gatherContext(preferences: ContextPreferences): Promise<PromptContext> {
+export async function gatherContext(
+  preferences: ContextPreferences,
+): Promise<PromptContext> {
   const context: PromptContext = {};
 
   const tasks: Promise<void>[] = [];
@@ -34,7 +40,7 @@ export async function gatherContext(preferences: ContextPreferences): Promise<Pr
         } catch (error) {
           console.warn("Failed to read clipboard", error);
         }
-      })()
+      })(),
     );
   }
 
@@ -51,7 +57,7 @@ export async function gatherContext(preferences: ContextPreferences): Promise<Pr
             console.warn("Failed to read selection", error);
           }
         }
-      })()
+      })(),
     );
   }
 
@@ -69,7 +75,7 @@ export async function gatherContext(preferences: ContextPreferences): Promise<Pr
         } catch (error) {
           console.warn("Failed to read frontmost application", error);
         }
-      })()
+      })(),
     );
   }
 

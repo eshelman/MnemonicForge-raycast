@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getPromptIndex, PromptIndex, PromptSearchResult } from "./prompt-index";
+import {
+  getPromptIndex,
+  PromptIndex,
+  PromptSearchResult,
+} from "./prompt-index";
 import { PromptRecord } from "./prompt-types";
 
 export interface UsePromptIndexState {
@@ -11,7 +15,9 @@ export interface UsePromptIndexState {
   refresh: () => Promise<void>;
 }
 
-export function usePromptIndex(promptsPath: string | undefined): UsePromptIndexState {
+export function usePromptIndex(
+  promptsPath: string | undefined,
+): UsePromptIndexState {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [records, setRecords] = useState<PromptRecord[]>([]);
@@ -23,7 +29,9 @@ export function usePromptIndex(promptsPath: string | undefined): UsePromptIndexS
 
     async function initialize() {
       if (!promptsPath) {
-        setError("Set the Prompts Folder preference to your prompt_templates directory.");
+        setError(
+          "Set the Prompts Folder preference to your prompt_templates directory.",
+        );
         setRecords([]);
         setIsLoading(false);
         indexRef.current = null;
@@ -52,7 +60,8 @@ export function usePromptIndex(promptsPath: string | undefined): UsePromptIndexS
         if (!isMounted) {
           return;
         }
-        const message = caught instanceof Error ? caught.message : "Failed to index prompts.";
+        const message =
+          caught instanceof Error ? caught.message : "Failed to index prompts.";
         setError(message);
         setRecords([]);
       } finally {
@@ -78,7 +87,7 @@ export function usePromptIndex(promptsPath: string | undefined): UsePromptIndexS
 
       return indexRef.current.search(query, limit);
     },
-    []
+    [],
   );
 
   const refresh = useCallback(async () => {
