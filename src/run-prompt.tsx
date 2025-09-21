@@ -4,6 +4,7 @@ import { getExtensionPreferences } from "./preferences";
 import { PromptParameter, PromptRecord } from "./prompt-types";
 import { usePromptIndex } from "./use-prompt-index";
 import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
+import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
@@ -16,6 +17,14 @@ export default function RunPromptCommand() {
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const [lastRendered, setLastRendered] = useState<(RenderedPrompt & { renderedAt: Date }) | null>(null);
+  const [lastSendResult, setLastSendResult] = useState<
+    | {
+        prompt: RenderedPrompt & { renderedAt: Date };
+        response: SendPromptResult;
+      }
+    | null
+  >(null);
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (error && promptsPath) {
@@ -48,10 +57,7 @@ export default function RunPromptCommand() {
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
   const formKey = selectedPromptId ?? "no-prompt";
 
-  const handleSubmit = async (
-    values: RunPromptFormValues,
-    options: { copy: boolean; paste: boolean }
-  ) => {
+  const prepareRender = async (values: RunPromptFormValues) => {
     const promptId = (values.promptId as string | undefined) ?? selectedPromptId ?? undefined;
     const record = records.find((item) => item.id === promptId);
 
@@ -65,47 +71,44 @@ export default function RunPromptCommand() {
       return;
     }
 
-    const parameters = record.frontMatter.parameters ?? [];
-    const collected: Record<string, unknown> = {};
+    const { collected, missing } = collectParameters(record, values);
 
-    for (const parameter of parameters) {
-      const fieldId = fieldNameForParameter(parameter);
-      const rawValue = values[fieldId];
-      collected[parameter.name] = normalizeParameterValue(parameter, rawValue);
-    }
-
-    const missingRequired = parameters
-      .filter((parameter) => parameter.required)
-      .filter((parameter) => {
-        const value = collected[parameter.name];
-        if (parameter.type === "array") {
-          return !Array.isArray(value) || value.length === 0;
-        }
-        return value === undefined || value === "" || value === null;
-      });
-
-    if (missingRequired.length) {
+    if (missing.length) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Missing required inputs",
-        message: missingRequired.map((parameter) => parameter.name).join(", "),
+        message: missing.map((parameter) => parameter.name).join(", "),
       });
       return;
     }
 
-    try {
-      const rendered = renderPrompt(record, {
-        parameters: collected,
-        context: {},
-      });
+    const rendered = renderPrompt(record, {
+      parameters: collected,
+      context: {},
+    });
 
-      setLastRendered({ ...rendered, renderedAt: new Date() });
+    return { record, rendered, collected };
+  };
+
+  const handleSubmit = async (
+    values: RunPromptFormValues,
+    options: { copy: boolean; paste: boolean }
+  ) => {
+    try {
+      const prepared = await prepareRender(values);
+      if (!prepared) {
+        return;
+      }
+
+      const timestamped = { ...prepared.rendered, renderedAt: new Date() };
+      setLastRendered(timestamped);
+      setLastSendResult(null);
 
       if (options.copy) {
-        await Clipboard.copy(rendered.output);
+        await Clipboard.copy(timestamped.output);
         if (options.paste) {
           try {
-            await Clipboard.paste(rendered.output);
+            await Clipboard.paste(timestamped.output);
           } catch (clipboardError) {
             console.warn("Paste failed", clipboardError);
           }
@@ -119,12 +122,51 @@ export default function RunPromptCommand() {
       });
 
       console.debug("Prompt rendered", {
-        promptId: record.id,
+        promptId: prepared.record.id,
         preferences,
       });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Failed to render prompt";
       await showToast({ style: Toast.Style.Failure, title: "Render failed", message });
+    }
+  };
+
+  const handleSend = async (values: RunPromptFormValues) => {
+    if (isSending) {
+      await showToast({ style: Toast.Style.Animated, title: "Send already in progress" });
+      return;
+    }
+
+    setIsSending(true);
+    const toast = await showToast({ style: Toast.Style.Animated, title: "Sending to OpenAI" });
+    try {
+      const prepared = await prepareRender(values);
+      if (!prepared) {
+        toast.hide();
+        return;
+      }
+
+      const timestamped = { ...prepared.rendered, renderedAt: new Date() };
+      setLastRendered(timestamped);
+
+      const response = await sendPromptToOpenAI({
+        prompt: timestamped.output,
+        frontMatter: prepared.record.frontMatter!,
+        context: {},
+      });
+
+      setLastSendResult({ prompt: timestamped, response });
+
+      toast.style = Toast.Style.Success;
+      toast.title = "Sent to OpenAI";
+      toast.message = response.tokensUsed ? `${response.tokensUsed} tokens` : undefined;
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Failed to send prompt";
+      toast.style = Toast.Style.Failure;
+      toast.title = "Send failed";
+      toast.message = message;
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -145,9 +187,16 @@ export default function RunPromptCommand() {
           />
           <Action.SubmitForm
             title="Render Without Copy"
-            shortcut={{ modifiers: ["cmd"], key: "enter" }}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "enter" }}
             onSubmit={(values) => handleSubmit(values, { copy: false, paste: false })}
           />
+          {enableSend ? (
+            <Action.SubmitForm
+              title={isSending ? "Sending…" : "Send with OpenAI"}
+              shortcut={{ modifiers: ["cmd"], key: "enter" }}
+              onSubmit={handleSend}
+            />
+          ) : null}
           {selectedRecord ? <Action.Open title="Open Prompt" target={selectedRecord.filePath} /> : null}
           {selectedRecord ? <Action.ShowInFinder title="Reveal in Finder" path={selectedRecord.filePath} /> : null}
           {lastRendered ? (
@@ -162,6 +211,20 @@ export default function RunPromptCommand() {
               title="Preview Last Output"
               shortcut={{ modifiers: ["cmd"], key: "y" }}
               target={<PromptPreview rendered={lastRendered} />}
+            />
+          ) : null}
+          {lastSendResult ? (
+            <Action.CopyToClipboard
+              title="Copy Last Response"
+              content={lastSendResult.response.output}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+            />
+          ) : null}
+          {lastSendResult ? (
+            <Action.Push
+              title="Preview Last Response"
+              shortcut={{ modifiers: ["cmd"], key: "r" }}
+              target={<SendResultPreview result={lastSendResult} />}
             />
           ) : null}
         </ActionPanel>
@@ -214,17 +277,59 @@ export default function RunPromptCommand() {
         parameterFields.map((parameter) => renderParameterField(parameter))
       )}
 
-      {lastRendered ? (
+      {lastRendered || lastSendResult ? (
         <>
           <Form.Separator />
-          <Form.Description
-            title="Last Render"
-            text={`Rendered ${lastRendered.renderedAt.toLocaleTimeString()} — ${lastRendered.metadata.title}`}
-          />
+          {lastRendered ? (
+            <Form.Description
+              title="Last Render"
+              text={`Rendered ${lastRendered.renderedAt.toLocaleTimeString()} — ${lastRendered.metadata.title}`}
+            />
+          ) : null}
+          {lastSendResult ? (
+            <Form.Description
+              title="Last Response"
+              text={
+                lastSendResult.response.tokensUsed
+                  ? `Received ${lastSendResult.response.tokensUsed} tokens from OpenAI.`
+                  : "Received response from OpenAI."
+              }
+            />
+          ) : null}
         </>
       ) : null}
     </Form>
   );
+}
+
+function collectParameters(
+  record: PromptRecord,
+  values: RunPromptFormValues
+): { collected: Record<string, unknown>; missing: PromptParameter[] } {
+  const parameters = record.frontMatter?.parameters ?? [];
+  const collected: Record<string, unknown> = {};
+  const missing: PromptParameter[] = [];
+
+  for (const parameter of parameters) {
+    const fieldId = fieldNameForParameter(parameter);
+    const rawValue = values[fieldId];
+    const normalized = normalizeParameterValue(parameter, rawValue);
+    collected[parameter.name] = normalized;
+
+    if (parameter.required) {
+      const isEmpty =
+        normalized === undefined ||
+        normalized === null ||
+        (typeof normalized === "string" && normalized.trim() === "") ||
+        (Array.isArray(normalized) && normalized.length === 0);
+
+      if (isEmpty) {
+        missing.push(parameter);
+      }
+    }
+  }
+
+  return { collected, missing };
 }
 
 function renderParameterField(parameter: PromptParameter) {
@@ -417,6 +522,43 @@ function PromptPreview({ rendered }: { rendered: RenderedPrompt }) {
           {rendered.metadata.tags.length ? (
             <Detail.Metadata.TagList title="Tags">
               {rendered.metadata.tags.map((tag) => (
+                <Detail.Metadata.TagList.Item key={tag} text={tag} />
+              ))}
+            </Detail.Metadata.TagList>
+          ) : null}
+        </Detail.Metadata>
+      }
+    />
+  );
+}
+
+function SendResultPreview({
+  result,
+}: {
+  result: {
+    prompt: RenderedPrompt & { renderedAt: Date };
+    response: SendPromptResult;
+  };
+}) {
+  const promptMarkdown = `## Prompt\n\n\`\`\`\n${result.prompt.output}\n\`\`\``;
+  const responseMarkdown = result.response.output
+    ? `## Response\n\n${result.response.output}`
+    : "## Response\n\n_No content returned._";
+
+  const markdown = `# ${result.prompt.metadata.title}\n\n${promptMarkdown}\n\n${responseMarkdown}`;
+
+  return (
+    <Detail
+      markdown={markdown}
+      metadata={
+        <Detail.Metadata>
+          <Detail.Metadata.Label title="Sent" text={result.prompt.renderedAt.toLocaleString()} />
+          {result.response.tokensUsed ? (
+            <Detail.Metadata.Label title="Tokens" text={String(result.response.tokensUsed)} />
+          ) : null}
+          {result.prompt.metadata.tags.length ? (
+            <Detail.Metadata.TagList title="Tags">
+              {result.prompt.metadata.tags.map((tag) => (
                 <Detail.Metadata.TagList.Item key={tag} text={tag} />
               ))}
             </Detail.Metadata.TagList>
