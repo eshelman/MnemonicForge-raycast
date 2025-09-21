@@ -5,6 +5,8 @@ import { PromptParameter, PromptRecord } from "./prompt-types";
 import { usePromptIndex } from "./use-prompt-index";
 import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
+import { gatherContext } from "./context-gatherer";
+import { summarizeContext } from "./context-summary";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
@@ -13,7 +15,15 @@ interface RunPromptFormValues extends Form.Values {
 
 export default function RunPromptCommand() {
   const preferences = getExtensionPreferences();
-  const { promptsPath, pasteAfterCopy, enableSend } = preferences;
+  const {
+    promptsPath,
+    pasteAfterCopy,
+    enableSend,
+    contextDefaultClipboard,
+    contextDefaultSelection,
+    contextDefaultApp,
+    contextDefaultDate,
+  } = preferences;
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
   const [lastRendered, setLastRendered] = useState<(RenderedPrompt & { renderedAt: Date }) | null>(null);
@@ -25,6 +35,7 @@ export default function RunPromptCommand() {
     | null
   >(null);
   const [isSending, setIsSending] = useState(false);
+  const [lastContextSummary, setLastContextSummary] = useState<string | null>(null);
 
   useEffect(() => {
     if (error && promptsPath) {
@@ -82,12 +93,22 @@ export default function RunPromptCommand() {
       return;
     }
 
+    const contextPreferences = {
+      clipboard: contextDefaultClipboard,
+      selection: contextDefaultSelection,
+      application: contextDefaultApp,
+      date: contextDefaultDate,
+    };
+
+    const promptContext = await gatherContext(contextPreferences);
     const rendered = renderPrompt(record, {
       parameters: collected,
-      context: {},
+      context: promptContext,
     });
 
-    return { record, rendered, collected };
+    setLastContextSummary(summarizeContext(promptContext));
+
+    return { record, rendered, collected, promptContext };
   };
 
   const handleSubmit = async (
@@ -124,6 +145,7 @@ export default function RunPromptCommand() {
       console.debug("Prompt rendered", {
         promptId: prepared.record.id,
         preferences,
+        context: prepared.promptContext,
       });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Failed to render prompt";
@@ -152,7 +174,7 @@ export default function RunPromptCommand() {
       const response = await sendPromptToOpenAI({
         prompt: timestamped.output,
         frontMatter: prepared.record.frontMatter!,
-        context: {},
+        context: prepared.promptContext,
       });
 
       setLastSendResult({ prompt: timestamped, response });
@@ -261,6 +283,10 @@ export default function RunPromptCommand() {
       ) : (
         <Form.Description title="Selected Prompt" text="Choose a prompt to configure parameters." />
       )}
+
+      {lastContextSummary ? (
+        <Form.Description title="Context" text={lastContextSummary} />
+      ) : null}
 
       {selectedRecord?.validationIssues.length ? (
         <Form.Description
