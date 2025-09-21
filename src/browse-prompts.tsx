@@ -10,9 +10,10 @@ import { useEffect, useMemo, useState } from "react";
 import { getExtensionPreferences } from "./preferences";
 import { PromptSearchResult } from "./prompt-index";
 import { usePromptIndex } from "./use-prompt-index";
+import { openInExternalEditor } from "./editor-utils";
 
 export default function BrowsePromptsCommand() {
-  const { promptsPath } = getExtensionPreferences();
+  const { promptsPath, externalEditorCommand } = getExtensionPreferences();
   const [searchText, setSearchText] = useState("");
   const { isLoading, error, records, hasIndex, search } =
     usePromptIndex(promptsPath);
@@ -125,7 +126,23 @@ export default function BrowsePromptsCommand() {
                 }
                 actions={
                   <ActionPanel>
-                    <Action.Open title="Open Prompt" target={record.filePath} />
+                    {externalEditorCommand?.trim() ? (
+                      <Action
+                        title="Open in External Editor"
+                        icon={Icon.Pencil}
+                        onAction={async () =>
+                          openInExternalEditor(
+                            record.filePath,
+                            externalEditorCommand,
+                          )
+                        }
+                      />
+                    ) : (
+                      <Action.Open
+                        title="Open Prompt"
+                        target={record.filePath}
+                      />
+                    )}
                     <Action.ShowInFinder
                       title="Reveal in Finder"
                       path={record.filePath}

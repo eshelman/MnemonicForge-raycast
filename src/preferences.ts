@@ -12,6 +12,7 @@ export type ExtensionPreferences = {
   contextDefaultApp: boolean;
   contextDefaultDate: boolean;
   debugLog: boolean;
+  externalEditorCommand?: string;
 };
 
 export function getExtensionPreferences(): ExtensionPreferences {

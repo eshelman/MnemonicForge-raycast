@@ -36,6 +36,7 @@ All commands share the following preferences:
 - `Paste After Copy` – Automatically paste rendered output.
 - `Enable OpenAI Send` and related defaults – Configure OpenAI sends triggered with `⌘↵`.
 - Context capture toggles – Collect clipboard/selection/app/date data for templates.
+- `External Editor` – Optional command (for example `subl` or `code`) used when opening prompt files from Raycast.
 
 You can store an OpenAI API key via the **Manage OpenAI API Key** action while running a prompt.
 

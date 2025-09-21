@@ -29,7 +29,9 @@ type ExtensionPreferences = {
   /** Capture Current Date by Default - Add the current ISO8601 timestamp to the prompt context. */
   "contextDefaultDate": boolean,
   /** Enable Debug Logging - Emit verbose logs to Raycast console for troubleshooting. */
-  "debugLog": boolean
+  "debugLog": boolean,
+  /** External Editor Command - Optional command used to open prompt files (e.g., subl, code, vim). */
+  "externalEditorCommand"?: string
 }
 
 /** Preferences accessible in all the extension's commands */

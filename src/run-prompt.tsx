@@ -21,6 +21,7 @@ import {
   removeStoredOpenAIKey,
   setStoredOpenAIKey,
 } from "./openai-keychain";
+import { openInExternalEditor } from "./editor-utils";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
@@ -37,6 +38,7 @@ export default function RunPromptCommand() {
     contextDefaultSelection,
     contextDefaultApp,
     contextDefaultDate,
+    externalEditorCommand,
   } = preferences;
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
@@ -275,14 +277,39 @@ export default function RunPromptCommand() {
             }
           />
           {enableSend ? (
-            <Action.SubmitForm
-              title={isSending ? "Sending…" : "Send with Openai"}
-              shortcut={{ modifiers: ["cmd"], key: "enter" }}
-              onSubmit={handleSend}
-            />
+            isSending ? (
+              <Action.SubmitForm
+                title="Sending…"
+                shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                onSubmit={handleSend}
+              />
+            ) : (
+              <Action.SubmitForm
+                // eslint-disable-next-line @raycast/prefer-title-case
+                title="Send with OpenAI"
+                shortcut={{ modifiers: ["cmd"], key: "enter" }}
+                onSubmit={handleSend}
+              />
+            )
           ) : null}
           {selectedRecord ? (
-            <Action.Open title="Open Prompt" target={selectedRecord.filePath} />
+            externalEditorCommand?.trim() ? (
+              <Action
+                title="Open in External Editor"
+                icon={Icon.Pencil}
+                onAction={async () =>
+                  openInExternalEditor(
+                    selectedRecord.filePath,
+                    externalEditorCommand,
+                  )
+                }
+              />
+            ) : (
+              <Action.Open
+                title="Open Prompt"
+                target={selectedRecord.filePath}
+              />
+            )
           ) : null}
           {selectedRecord ? (
             <Action.ShowInFinder

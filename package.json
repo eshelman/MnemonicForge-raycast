@@ -131,6 +131,15 @@
       "default": false,
       "label": "Enable Debug Logging",
       "required": false
+    },
+    {
+      "name": "externalEditorCommand",
+      "title": "External Editor Command",
+      "description": "Optional command used to open prompt files (e.g., subl, code, vim).",
+      "type": "textfield",
+      "placeholder": "subl",
+      "label": "External Editor",
+      "required": false
     }
   ],
   "dependencies": {
