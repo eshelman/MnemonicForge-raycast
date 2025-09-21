@@ -1,106 +1,40 @@
 import { Action, ActionPanel, Icon, List, Toast, showToast } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getExtensionPreferences } from "./preferences";
-import { getPromptIndex, PromptSearchResult } from "./prompt-index";
+import { PromptSearchResult } from "./prompt-index";
+import { usePromptIndex } from "./use-prompt-index";
 
 export default function BrowsePromptsCommand() {
   const { promptsPath } = getExtensionPreferences();
   const [searchText, setSearchText] = useState("");
-  const [results, setResults] = useState<PromptSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [indexReady, setIndexReady] = useState(false);
-  const [indexRevision, setIndexRevision] = useState(0);
+  const { isLoading, error, records, hasIndex, search } = usePromptIndex(promptsPath);
 
   useEffect(() => {
-    let isMounted = true;
-    let unsubscribe: (() => void) | undefined;
+    if (error && promptsPath) {
+      showToast({ style: Toast.Style.Failure, title: "Prompt index unavailable", message: error });
+    }
+  }, [error, promptsPath]);
 
-    async function initialize() {
-      if (!promptsPath) {
-        setErrorMessage("Set the Prompts Folder preference to your prompt_templates directory.");
-        setResults([]);
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      setIndexReady(false);
-      setErrorMessage(null);
-      setIndexRevision(0);
-
-      try {
-        const index = await getPromptIndex(promptsPath);
-        if (!isMounted) {
-          return;
-        }
-
-        setIndexReady(true);
-        setResults(index.search(""));
-        unsubscribe = index.subscribe(() => {
-          if (!isMounted) {
-            return;
-          }
-          setIndexRevision((revision) => revision + 1);
-        });
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : "Failed to index prompts.";
-        setErrorMessage(message);
-        setResults([]);
-        await showToast({ style: Toast.Style.Failure, title: "Failed to index prompts", message });
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+  const results: PromptSearchResult[] = useMemo(() => {
+    if (!hasIndex || error) {
+      return [];
     }
 
-    initialize();
-
-    return () => {
-      isMounted = false;
-      unsubscribe?.();
-    };
-  }, [promptsPath]);
-
-  useEffect(() => {
-    if (!promptsPath || errorMessage || !indexReady) {
-      return;
+    if (!searchText.trim()) {
+      return records.map((record, index) => ({ record, score: index }));
     }
 
-    let cancelled = false;
+    return search(searchText);
+  }, [hasIndex, error, records, searchText, search]);
 
-    (async () => {
-      try {
-        const index = await getPromptIndex(promptsPath);
-        if (cancelled) {
-          return;
-        }
-        setResults(index.search(searchText));
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : "Search failed.";
-        setErrorMessage(message);
-        await showToast({ style: Toast.Style.Failure, title: "Search failed", message });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [searchText, promptsPath, indexRevision, indexReady, errorMessage]);
-
-  const emptyView = errorMessage ? (
-    <List.EmptyView title="Prompt index unavailable" description={errorMessage} icon={Icon.Warning} />
+  const emptyView = error ? (
+    <List.EmptyView title="Prompt index unavailable" description={error} icon={Icon.Warning} />
   ) : (
     <List.EmptyView
       title="No prompts found"
-      description={promptsPath ? "Add prompt files to your library to see them here." : "Configure the Prompts Folder preference."}
+      description={
+        promptsPath ? "Add prompt files to your library to see them here." : "Configure the Prompts Folder preference."
+      }
       icon={Icon.TextDocument}
     />
   );
