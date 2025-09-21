@@ -13,7 +13,7 @@ Author prompts in Markdown with Handlebars placeholders (e.g., `{{topic}}`, `{{#
 Exercise every new prompt by running the corresponding Raycast command and by pasting the rendered Handlebars output into an LLM session. Capture unexpected behaviors as TODOs or PR comments. For the extension, rely on Raycast’s preview plus any Jest or integration tests you add; run them via `npm test`. Always confirm the build passes in production mode with `npm run build` before tagging a release.
 
 ## Commit & Pull Request Guidelines
-Write succinct, imperative commit messages (e.g., `Add Raycast search command`). Group prompt edits and extension code separately when possible for easier review. Pull requests should outline the scenario tested, list Raycast or LLM commands run, include screenshots or recordings of the Raycast UI when visuals changed, and mention any new Handlebars parameters introduced.
+Write succinct, imperative commit messages with a brief first line (e.g., `Add Raycast search command`) and follow-on lines with bullet points to describe key changes. Group prompt edits and extension code separately when possible for easier review. Pull requests should outline the scenario tested, list Raycast or LLM commands run, include screenshots or recordings of the Raycast UI when visuals changed, and mention any new Handlebars parameters introduced.
 
 ## Agent-Specific Instructions
 Agents may edit prompts, Raycast source, and documentation, but they must not execute anything under `utilities/`. Instead, leave clear instructions for human reviewers if those scripts should be run, and link to relevant results when provided.
