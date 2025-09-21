@@ -1,8 +1,9 @@
-import { Action, ActionPanel, Form, Icon, Toast, showToast } from "@raycast/api";
+import { Action, ActionPanel, Clipboard, Detail, Form, Icon, Toast, showToast } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import { getExtensionPreferences } from "./preferences";
 import { PromptParameter, PromptRecord } from "./prompt-types";
 import { usePromptIndex } from "./use-prompt-index";
+import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
@@ -14,6 +15,7 @@ export default function RunPromptCommand() {
   const { promptsPath, pasteAfterCopy, enableSend } = preferences;
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+  const [lastRendered, setLastRendered] = useState<(RenderedPrompt & { renderedAt: Date }) | null>(null);
 
   useEffect(() => {
     if (error && promptsPath) {
@@ -46,7 +48,10 @@ export default function RunPromptCommand() {
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
   const formKey = selectedPromptId ?? "no-prompt";
 
-  const handleSubmit = async (values: RunPromptFormValues) => {
+  const handleSubmit = async (
+    values: RunPromptFormValues,
+    options: { copy: boolean; paste: boolean }
+  ) => {
     const promptId = (values.promptId as string | undefined) ?? selectedPromptId ?? undefined;
     const record = records.find((item) => item.id === promptId);
 
@@ -69,17 +74,58 @@ export default function RunPromptCommand() {
       collected[parameter.name] = normalizeParameterValue(parameter, rawValue);
     }
 
-    await showToast({
-      style: Toast.Style.Success,
-      title: "Prompt ready",
-      message: `Collected ${parameters.length} parameter${parameters.length === 1 ? "" : "s"}. Rendering coming soon.`,
-    });
+    const missingRequired = parameters
+      .filter((parameter) => parameter.required)
+      .filter((parameter) => {
+        const value = collected[parameter.name];
+        if (parameter.type === "array") {
+          return !Array.isArray(value) || value.length === 0;
+        }
+        return value === undefined || value === "" || value === null;
+      });
 
-    console.debug("Prompt submission", {
-      promptId: record.id,
-      parameters: collected,
-      preferences,
-    });
+    if (missingRequired.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Missing required inputs",
+        message: missingRequired.map((parameter) => parameter.name).join(", "),
+      });
+      return;
+    }
+
+    try {
+      const rendered = renderPrompt(record, {
+        parameters: collected,
+        context: {},
+      });
+
+      setLastRendered({ ...rendered, renderedAt: new Date() });
+
+      if (options.copy) {
+        await Clipboard.copy(rendered.output);
+        if (options.paste) {
+          try {
+            await Clipboard.paste(rendered.output);
+          } catch (clipboardError) {
+            console.warn("Paste failed", clipboardError);
+          }
+        }
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Prompt ready",
+        message: options.copy ? "Copied to clipboard" : "Rendered without copying",
+      });
+
+      console.debug("Prompt rendered", {
+        promptId: record.id,
+        preferences,
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Failed to render prompt";
+      await showToast({ style: Toast.Style.Failure, title: "Render failed", message });
+    }
   };
 
   return (
@@ -88,9 +134,36 @@ export default function RunPromptCommand() {
       isLoading={isLoading && !hasIndex}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Prepare Prompt" onSubmit={handleSubmit} />
+          <Action.SubmitForm
+            title="Render & Copy"
+            onSubmit={(values) => handleSubmit(values, { copy: true, paste: pasteAfterCopy })}
+          />
+          <Action.SubmitForm
+            title="Render (Copy Only)"
+            shortcut={{ modifiers: ["opt"], key: "enter" }}
+            onSubmit={(values) => handleSubmit(values, { copy: true, paste: false })}
+          />
+          <Action.SubmitForm
+            title="Render Without Copy"
+            shortcut={{ modifiers: ["cmd"], key: "enter" }}
+            onSubmit={(values) => handleSubmit(values, { copy: false, paste: false })}
+          />
           {selectedRecord ? <Action.Open title="Open Prompt" target={selectedRecord.filePath} /> : null}
           {selectedRecord ? <Action.ShowInFinder title="Reveal in Finder" path={selectedRecord.filePath} /> : null}
+          {lastRendered ? (
+            <Action.CopyToClipboard
+              title="Copy Last Output"
+              content={lastRendered.output}
+              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+            />
+          ) : null}
+          {lastRendered ? (
+            <Action.Push
+              title="Preview Last Output"
+              shortcut={{ modifiers: ["cmd"], key: "y" }}
+              target={<PromptPreview rendered={lastRendered} />}
+            />
+          ) : null}
         </ActionPanel>
       }
     >
@@ -140,6 +213,16 @@ export default function RunPromptCommand() {
       ) : (
         parameterFields.map((parameter) => renderParameterField(parameter))
       )}
+
+      {lastRendered ? (
+        <>
+          <Form.Separator />
+          <Form.Description
+            title="Last Render"
+            text={`Rendered ${lastRendered.renderedAt.toLocaleTimeString()} — ${lastRendered.metadata.title}`}
+          />
+        </>
+      ) : null}
     </Form>
   );
 }
@@ -317,4 +400,29 @@ function normalizeParameterValue(parameter: PromptParameter, rawValue: unknown):
     default:
       return rawValue ?? "";
   }
+}
+
+function PromptPreview({ rendered }: { rendered: RenderedPrompt }) {
+  const markdown = `# ${rendered.metadata.title}\n\n\`\`\`\n${rendered.output}\n\`\`\``;
+
+  return (
+    <Detail
+      markdown={markdown}
+      metadata={
+        <Detail.Metadata>
+          {rendered.metadata.description ? (
+            <Detail.Metadata.Label title="Description" text={rendered.metadata.description} />
+          ) : null}
+          <Detail.Metadata.Label title="Source" text={rendered.metadata.sourcePath} />
+          {rendered.metadata.tags.length ? (
+            <Detail.Metadata.TagList title="Tags">
+              {rendered.metadata.tags.map((tag) => (
+                <Detail.Metadata.TagList.Item key={tag} text={tag} />
+              ))}
+            </Detail.Metadata.TagList>
+          ) : null}
+        </Detail.Metadata>
+      }
+    />
+  );
 }

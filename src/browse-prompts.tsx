@@ -64,33 +64,33 @@ export default function BrowsePromptsCommand() {
               icon={record.validationIssues.length ? Icon.Warning : Icon.Document}
               title={record.frontMatter?.title ?? record.relativePath}
               subtitle={record.frontMatter?.description}
-            accessories={accessories}
-            detail={
-              <List.Item.Detail
-                markdown={`**Path:** ${record.relativePath}\n\n${record.excerpt || "(empty file)"}`}
-                metadata={
-                  <List.Item.Detail.Metadata>
-                    <List.Item.Detail.Metadata.Label title="Last Modified" text={record.modifiedAt.toLocaleString()} />
-                    {record.tags.length ? (
-                      <List.Item.Detail.Metadata.TagList title="Tags">
-                        {record.tags.map((tag) => (
-                          <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
-                        ))}
-                      </List.Item.Detail.Metadata.TagList>
-                    ) : null}
-                    {record.validationIssues.length ? (
-                      <List.Item.Detail.Metadata.Separator />
-                    ) : null}
-                    {record.validationIssues.map((issue, index) => (
-                      <List.Item.Detail.Metadata.Label
-                        key={`${issue.message}-${index}`}
-                        title="Validation"
-                        text={issue.path ? `${issue.message} (${issue.path})` : issue.message}
-                      />
-                    ))}
-                  </List.Item.Detail.Metadata>
-                }
-              />
+              accessories={accessories}
+              detail={
+                <List.Item.Detail
+                  markdown={`**Path:** ${record.relativePath}\n\n${record.excerpt || "(empty file)"}`}
+                  metadata={
+                    <List.Item.Detail.Metadata>
+                      <List.Item.Detail.Metadata.Label title="Last Modified" text={record.modifiedAt.toLocaleString()} />
+                      {record.tags.length ? (
+                        <List.Item.Detail.Metadata.TagList title="Tags">
+                          {record.tags.map((tag) => (
+                            <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
+                          ))}
+                        </List.Item.Detail.Metadata.TagList>
+                      ) : null}
+                      {record.validationIssues.length ? (
+                        <List.Item.Detail.Metadata.Separator />
+                      ) : null}
+                      {record.validationIssues.map((issue, index) => (
+                        <List.Item.Detail.Metadata.Label
+                          key={`${issue.message}-${index}`}
+                          title="Validation"
+                          text={issue.path ? `${issue.message} (${issue.path})` : issue.message}
+                        />
+                      ))}
+                    </List.Item.Detail.Metadata>
+                  }
+                />
               }
               actions={
                 <ActionPanel>
