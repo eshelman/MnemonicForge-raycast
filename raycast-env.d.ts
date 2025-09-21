@@ -38,16 +38,12 @@ type ExtensionPreferences = {
 declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
-  /** Preferences accessible in the `browse-prompts` command */
-  export type BrowsePrompts = ExtensionPreferences & {}
-  /** Preferences accessible in the `run-prompt` command */
-  export type RunPrompt = ExtensionPreferences & {}
+  /** Preferences accessible in the `prompts` command */
+  export type Prompts = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
-  /** Arguments passed to the `browse-prompts` command */
-  export type BrowsePrompts = {}
-  /** Arguments passed to the `run-prompt` command */
-  export type RunPrompt = {}
+  /** Arguments passed to the `prompts` command */
+  export type Prompts = {}
 }
 

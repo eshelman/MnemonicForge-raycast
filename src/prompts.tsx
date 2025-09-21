@@ -1,3 +1,5 @@
+/* eslint-disable @raycast/prefer-title-case */
+
 import {
   Action,
   ActionPanel,
@@ -5,31 +7,260 @@ import {
   Detail,
   Form,
   Icon,
+  List,
   Toast,
   showToast,
 } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
-import { getExtensionPreferences } from "./preferences";
-import { PromptParameter, PromptRecord } from "./prompt-types";
-import { usePromptIndex } from "./use-prompt-index";
-import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
-import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
+import { openInExternalEditor } from "./editor-utils";
 import {
   getStoredOpenAIKey,
   removeStoredOpenAIKey,
   setStoredOpenAIKey,
 } from "./openai-keychain";
-import { openInExternalEditor } from "./editor-utils";
+import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
+import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
+import { PromptSearchResult } from "./prompt-index";
+import { PromptParameter, PromptRecord } from "./prompt-types";
+import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
+import { usePromptIndex } from "./use-prompt-index";
 
 interface RunPromptFormValues extends Form.Values {
   promptId?: string;
   [key: string]: unknown;
 }
 
-export default function RunPromptCommand() {
+export default function PromptsCommand() {
   const preferences = getExtensionPreferences();
+  const {
+    promptsPath,
+    pasteAfterCopy,
+    contextDefaultClipboard,
+    contextDefaultSelection,
+    contextDefaultApp,
+    contextDefaultDate,
+    externalEditorCommand,
+  } = preferences;
+
+  const { isLoading, error, records, hasIndex, search } =
+    usePromptIndex(promptsPath);
+  const [searchText, setSearchText] = useState("");
+
+  useEffect(() => {
+    if (error && promptsPath) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: "Prompt index unavailable",
+        message: error,
+      });
+    }
+  }, [error, promptsPath]);
+
+  const results: PromptSearchResult[] = useMemo(() => {
+    if (!hasIndex || error) {
+      return [];
+    }
+
+    if (!searchText.trim()) {
+      return records.map((record, index) => ({ record, score: index }));
+    }
+
+    return search(searchText);
+  }, [hasIndex, error, records, searchText, search]);
+
+  const handleQuickRender = async (record: PromptRecord) => {
+    if (!record.frontMatter || record.validationIssues.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Prompt metadata incomplete",
+      });
+      return;
+    }
+
+    const formValues: RunPromptFormValues = { promptId: record.id };
+    const parameters = record.frontMatter.parameters ?? [];
+    for (const parameter of parameters) {
+      const fieldId = fieldNameForParameter(parameter);
+      if (parameter.default !== undefined) {
+        formValues[fieldId] = parameter.default;
+      }
+    }
+
+    const { collected, missing } = collectParameters(record, formValues);
+    if (missing.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Quick render needs inputs",
+        message: missing.map((parameter) => parameter.name).join(", "),
+      });
+      return;
+    }
+
+    const contextPreferences = {
+      clipboard: contextDefaultClipboard,
+      selection: contextDefaultSelection,
+      application: contextDefaultApp,
+      date: contextDefaultDate,
+    };
+
+    try {
+      const promptContext = await gatherContext(contextPreferences);
+      const rendered = renderPrompt(record, {
+        parameters: collected,
+        context: promptContext,
+      });
+
+      await Clipboard.copy(rendered.output);
+      if (pasteAfterCopy) {
+        try {
+          await Clipboard.paste(rendered.output);
+        } catch (clipboardError) {
+          console.warn("Paste failed", clipboardError);
+        }
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: "Prompt ready",
+        message: "Copied to clipboard",
+      });
+
+      console.debug("Prompt quick render", {
+        promptId: record.id,
+        context: promptContext,
+      });
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Failed to render prompt";
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Render failed",
+        message,
+      });
+    }
+  };
+
+  return (
+    <List
+      searchBarPlaceholder="Search prompts"
+      onSearchTextChange={setSearchText}
+      isLoading={isLoading}
+      throttle
+    >
+      {results.length === 0 ? (
+        <List.EmptyView
+          title={error ? "Prompt index unavailable" : "No prompts found"}
+          description={
+            error
+              ? error
+              : promptsPath
+                ? "Add prompt files to your library to see them here."
+                : "Configure the Prompts Folder preference."
+          }
+          icon={error ? Icon.Warning : Icon.TextDocument}
+        />
+      ) : (
+        results.map(({ record }) => (
+          <List.Item
+            key={record.id}
+            icon={record.validationIssues.length ? Icon.Warning : Icon.Document}
+            title={record.frontMatter?.title ?? record.relativePath}
+            subtitle={record.frontMatter?.description}
+            accessories={
+              record.tags.length
+                ? [{ text: record.tags.join(", ") }]
+                : undefined
+            }
+            detail={
+              <List.Item.Detail
+                markdown={`**Path:** ${record.relativePath}\n\n${record.excerpt || "(empty file)"}`}
+                metadata={
+                  <List.Item.Detail.Metadata>
+                    <List.Item.Detail.Metadata.Label
+                      title="Last Modified"
+                      text={record.modifiedAt.toLocaleString()}
+                    />
+                    {record.tags.length ? (
+                      <List.Item.Detail.Metadata.TagList title="Tags">
+                        {record.tags.map((tag) => (
+                          <List.Item.Detail.Metadata.TagList.Item
+                            key={tag}
+                            text={tag}
+                          />
+                        ))}
+                      </List.Item.Detail.Metadata.TagList>
+                    ) : null}
+                    {record.validationIssues.length ? (
+                      <List.Item.Detail.Metadata.Separator />
+                    ) : null}
+                    {record.validationIssues.map((issue, index) => (
+                      <List.Item.Detail.Metadata.Label
+                        key={`${issue.message}-${index}`}
+                        title="Validation"
+                        text={
+                          issue.path
+                            ? `${issue.message} (${issue.path})`
+                            : issue.message
+                        }
+                      />
+                    ))}
+                  </List.Item.Detail.Metadata>
+                }
+              />
+            }
+            actions={
+              <ActionPanel>
+                <Action.Push
+                  title="Configure Prompt"
+                  target={
+                    <PromptFormView
+                      preferences={preferences}
+                      initialPromptId={record.id}
+                    />
+                  }
+                />
+                <Action
+                  title="Quick Render & Copy"
+                  icon={Icon.Clipboard}
+                  shortcut={{ modifiers: ["ctrl"], key: "enter" }}
+                  onAction={() => handleQuickRender(record)}
+                />
+                {externalEditorCommand?.trim() ? (
+                  <Action
+                    title="Open In External Editor"
+                    icon={Icon.Pencil}
+                    onAction={async () =>
+                      openInExternalEditor(
+                        record.filePath,
+                        externalEditorCommand,
+                      )
+                    }
+                  />
+                ) : (
+                  <Action.Open title="Open Prompt" target={record.filePath} />
+                )}
+                <Action.ShowInFinder
+                  title="Reveal in Finder"
+                  path={record.filePath}
+                />
+              </ActionPanel>
+            }
+          />
+        ))
+      )}
+    </List>
+  );
+}
+
+function PromptFormView({
+  preferences,
+  initialPromptId,
+}: {
+  preferences: ExtensionPreferences;
+  initialPromptId: string;
+}) {
   const {
     promptsPath,
     pasteAfterCopy,
@@ -40,8 +271,12 @@ export default function RunPromptCommand() {
     contextDefaultDate,
     externalEditorCommand,
   } = preferences;
+
   const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
-  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(null);
+
+  const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
+    initialPromptId,
+  );
   const [lastRendered, setLastRendered] = useState<
     (RenderedPrompt & { renderedAt: Date }) | null
   >(null);
@@ -54,16 +289,6 @@ export default function RunPromptCommand() {
     null,
   );
   const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
-
-  useEffect(() => {
-    if (error && promptsPath) {
-      showToast({
-        style: Toast.Style.Failure,
-        title: "Prompt index unavailable",
-        message: error,
-      });
-    }
-  }, [error, promptsPath]);
 
   useEffect(() => {
     refreshOpenAIKeyPresence();
@@ -285,8 +510,7 @@ export default function RunPromptCommand() {
               />
             ) : (
               <Action.SubmitForm
-                // eslint-disable-next-line @raycast/prefer-title-case
-                title="Send with OpenAI"
+                title="Send With OpenAI"
                 shortcut={{ modifiers: ["cmd"], key: "enter" }}
                 onSubmit={handleSend}
               />
@@ -295,7 +519,7 @@ export default function RunPromptCommand() {
           {selectedRecord ? (
             externalEditorCommand?.trim() ? (
               <Action
-                title="Open in External Editor"
+                title="Open In External Editor"
                 icon={Icon.Pencil}
                 onAction={async () =>
                   openInExternalEditor(
@@ -346,7 +570,7 @@ export default function RunPromptCommand() {
             />
           ) : null}
           <Action.Push
-            title="Manage Openai Key"
+            title="Manage OpenAI Key"
             shortcut={{ modifiers: ["cmd"], key: "k" }}
             target={
               <ManageOpenAIKeyForm
@@ -391,7 +615,9 @@ export default function RunPromptCommand() {
       <Form.Description
         title="OpenAI API Key"
         text={
-          hasOpenAIKey ? "Stored in Raycast local storage" : "Not configured"
+          hasOpenAIKey
+            ? "Key stored in Raycast local storage."
+            : "Not configured"
         }
       />
 
@@ -455,6 +681,81 @@ export default function RunPromptCommand() {
           ) : null}
         </>
       ) : null}
+    </Form>
+  );
+}
+
+function ManageOpenAIKeyForm({
+  onUpdated,
+}: {
+  onUpdated: (present: boolean) => void;
+}) {
+  const [hasKey, setHasKey] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  useEffect(() => {
+    getStoredOpenAIKey().then((key) => {
+      setHasKey(Boolean(key));
+    });
+  }, []);
+
+  async function handleSubmit(values: { apiKey?: string }) {
+    const apiKey = values.apiKey?.trim();
+    if (!apiKey) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Enter an API key",
+      });
+      return;
+    }
+
+    await setStoredOpenAIKey(apiKey);
+    setHasKey(true);
+    onUpdated(true);
+    await showToast({ style: Toast.Style.Success, title: "OpenAI key saved" });
+  }
+
+  async function handleRemove() {
+    setIsRemoving(true);
+    try {
+      await removeStoredOpenAIKey();
+      setHasKey(false);
+      onUpdated(false);
+      await showToast({
+        style: Toast.Style.Success,
+        title: "OpenAI key removed",
+      });
+    } finally {
+      setIsRemoving(false);
+    }
+  }
+
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Save OpenAI Key" onSubmit={handleSubmit} />
+          {hasKey ? (
+            <Action
+              title={isRemoving ? "Removing…" : "Remove OpenAI Key"}
+              onAction={handleRemove}
+              style={Action.Style.Destructive}
+            />
+          ) : null}
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Status"
+        text={
+          hasKey ? "Key stored in Raycast local storage." : "No key stored."
+        }
+      />
+      <Form.PasswordField
+        id="apiKey"
+        title="OpenAI API Key"
+        placeholder="sk-..."
+      />
     </Form>
   );
 }
@@ -572,7 +873,6 @@ function renderParameterField(parameter: PromptParameter) {
         />
       );
     }
-    case "string":
     default:
       return renderFallbackTextField(fieldId, title, parameter);
   }
@@ -750,77 +1050,4 @@ function SendResultPreview({
   );
 }
 
-function ManageOpenAIKeyForm({
-  onUpdated,
-}: {
-  onUpdated: (present: boolean) => void;
-}) {
-  const [hasKey, setHasKey] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-
-  useEffect(() => {
-    getStoredOpenAIKey().then((key) => {
-      setHasKey(Boolean(key));
-    });
-  }, []);
-
-  async function handleSubmit(values: { apiKey?: string }) {
-    const apiKey = values.apiKey?.trim();
-    if (!apiKey) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Enter an API key",
-      });
-      return;
-    }
-
-    await setStoredOpenAIKey(apiKey);
-    setHasKey(true);
-    onUpdated(true);
-    await showToast({ style: Toast.Style.Success, title: "OpenAI key saved" });
-  }
-
-  async function handleRemove() {
-    setIsRemoving(true);
-    try {
-      await removeStoredOpenAIKey();
-      setHasKey(false);
-      onUpdated(false);
-      await showToast({
-        style: Toast.Style.Success,
-        title: "OpenAI key removed",
-      });
-    } finally {
-      setIsRemoving(false);
-    }
-  }
-
-  return (
-    <Form
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm title="Save Openai Key" onSubmit={handleSubmit} />
-          {hasKey ? (
-            <Action
-              title={isRemoving ? "Removing…" : "Remove Openai Key"}
-              onAction={handleRemove}
-              style={Action.Style.Destructive}
-            />
-          ) : null}
-        </ActionPanel>
-      }
-    >
-      <Form.Description
-        title="Status"
-        text={
-          hasKey ? "Key stored in Raycast local storage." : "No key stored."
-        }
-      />
-      <Form.PasswordField
-        id="apiKey"
-        title="OpenAI API Key"
-        placeholder="sk-..."
-      />
-    </Form>
-  );
-}
+/* eslint-enable @raycast/prefer-title-case */

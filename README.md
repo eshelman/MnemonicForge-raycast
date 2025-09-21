@@ -2,10 +2,9 @@
 
 Browse, search, and run prompts from the MnemonicForge library directly inside Raycast. The commands in this extension let you keep prompts versioned in git while offering a native desktop launch experience.
 
-## Commands
+## Command
 
-- **Browse Prompts** – Fuzzy-search the prompt library, preview metadata, and open files in your editor.
-- **Run Prompt** – Fill in front-matter parameters, auto-capture context (clipboard, selection, app, date), render the template, copy results, or send to OpenAI.
+- **Prompts** – Fuzzy-search the prompt library, quickly render & copy with defaults, edit templates in your preferred editor, and push into a full parameter form to copy or send to OpenAI.
 
 ## Requirements
 

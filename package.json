@@ -16,19 +16,12 @@
     "lint:fix": "ray lint --fix",
     "typecheck": "tsc --noEmit"
   },
-  "commands": [
+ "commands": [
     {
-      "name": "browse-prompts",
-      "title": "Browse Prompts",
+      "name": "prompts",
+      "title": "Prompts",
       "subtitle": "MnemonicForge",
-      "description": "Search your MnemonicForge prompt library.",
-      "mode": "view"
-    },
-    {
-      "name": "run-prompt",
-      "title": "Run Prompt",
-      "subtitle": "MnemonicForge",
-      "description": "Fill parameters and generate a prompt output.",
+      "description": "Search, edit, and render prompts from your MnemonicForge library.",
       "mode": "view"
     }
   ],
