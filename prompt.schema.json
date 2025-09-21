@@ -36,6 +36,10 @@
         "max_tokens": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
+    },
+    "comments": {
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "additionalProperties": false

@@ -26,6 +26,7 @@ export interface PromptFrontMatter {
   tags?: string[];
   parameters?: PromptParameter[];
   model?: PromptModelConfig;
+  comments?: string[];
 }
 
 export interface PromptValidationIssue {
