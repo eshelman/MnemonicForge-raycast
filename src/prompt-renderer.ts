@@ -86,6 +86,7 @@ export function renderPrompt(
   });
 
   const context = {
+    ...options.parameters,
     parameters: options.parameters,
     context: options.context ?? {},
     metadata: record.frontMatter,
