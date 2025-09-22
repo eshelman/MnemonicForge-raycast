@@ -5,6 +5,7 @@ export type ExtensionPreferences = {
   pasteAfterCopy: boolean;
   enableSend: boolean;
   openaiApiKey?: string;
+  openaiApiEndpoint?: string;
   openaiModel?: string;
   openaiTemperature?: string;
   openaiMaxTokens?: string;

@@ -34,6 +34,7 @@ All commands share the following preferences:
 - `Prompts Folder` – Absolute path to your `prompt_templates` directory.
 - `Paste After Copy` – Automatically paste rendered output.
 - `Enable OpenAI Send` and related defaults – Configure OpenAI sends triggered with `⌘↵`.
+- `OpenAI API Key` / `OpenAI API Endpoint` – Credentials and base URL used when sending prompts via OpenAI.
 - Context capture toggles – Collect clipboard/selection/app/date data for templates.
 - `External Editor` – Optional command (for example `subl` or `code`) used when opening prompt files from Raycast.
 
