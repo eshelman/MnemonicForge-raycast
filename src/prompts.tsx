@@ -25,6 +25,7 @@ import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
 import { PromptSearchResult } from "./prompt-index";
 import { PromptParameter, PromptRecord } from "./prompt-types";
 import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
+import { promptHasParameters } from "./prompt-utils";
 import { usePromptIndex } from "./use-prompt-index";
 
 interface RunPromptFormValues extends Form.Values {
@@ -212,21 +213,42 @@ export default function PromptsCommand() {
             }
             actions={
               <ActionPanel>
-                <Action.Push
-                  title="Configure Prompt"
-                  target={
-                    <PromptFormView
-                      preferences={preferences}
-                      initialPromptId={record.id}
+                {promptHasParameters(record) ? (
+                  <>
+                    <Action.Push
+                      title="Configure Prompt"
+                      target={
+                        <PromptFormView
+                          preferences={preferences}
+                          initialPromptId={record.id}
+                        />
+                      }
                     />
-                  }
-                />
-                <Action
-                  title="Quick Render & Copy"
-                  icon={Icon.Clipboard}
-                  shortcut={{ modifiers: ["ctrl"], key: "enter" }}
-                  onAction={() => handleQuickRender(record)}
-                />
+                    <Action
+                      title="Quick Render & Copy"
+                      icon={Icon.Clipboard}
+                      shortcut={{ modifiers: ["ctrl"], key: "enter" }}
+                      onAction={() => handleQuickRender(record)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Action
+                      title="Render & Copy"
+                      icon={Icon.Clipboard}
+                      onAction={() => handleQuickRender(record)}
+                    />
+                    <Action.Push
+                      title="Open Prompt Options"
+                      target={
+                        <PromptFormView
+                          preferences={preferences}
+                          initialPromptId={record.id}
+                        />
+                      }
+                    />
+                  </>
+                )}
                 {externalEditorCommand?.trim() ? (
                   <Action
                     title="Open In External Editor"
@@ -305,23 +327,37 @@ function PromptFormView({
       return;
     }
 
-    if (!selectedPromptId) {
-      setSelectedPromptId(records[0]?.id ?? null);
+    if (
+      selectedPromptId &&
+      records.some((record) => record.id === selectedPromptId)
+    ) {
       return;
     }
 
-    const stillPresent = records.some(
-      (record) => record.id === selectedPromptId,
-    );
-    if (!stillPresent) {
-      setSelectedPromptId(records[0]?.id ?? null);
+    if (
+      initialPromptId &&
+      records.some((record) => record.id === initialPromptId)
+    ) {
+      setSelectedPromptId(initialPromptId);
+      return;
     }
-  }, [records, selectedPromptId]);
+
+    setSelectedPromptId(records[0]?.id ?? null);
+  }, [records, selectedPromptId, initialPromptId]);
 
   const selectedRecord: PromptRecord | undefined = useMemo(
     () => records.find((record) => record.id === selectedPromptId),
     [records, selectedPromptId],
   );
+
+  const dropdownValue = useMemo(() => {
+    if (!selectedPromptId) {
+      return undefined;
+    }
+    return records.some((record) => record.id === selectedPromptId)
+      ? selectedPromptId
+      : undefined;
+  }, [records, selectedPromptId]);
 
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
   const formKey = selectedPromptId ?? "no-prompt";
@@ -585,9 +621,8 @@ function PromptFormView({
         id="promptId"
         title="Prompt"
         placeholder={error ? "Prompts unavailable" : "Select a prompt"}
-        value={selectedPromptId ?? undefined}
+        value={dropdownValue}
         onChange={setSelectedPromptId}
-        storeValue
       >
         {records.map((record) => (
           <Form.Dropdown.Item
