@@ -16,6 +16,8 @@ type ExtensionPreferences = {
   "enableSend": boolean,
   /** OpenAI API Key - Used when prompts are sent directly to OpenAI. */
   "openaiApiKey"?: string,
+  /** OpenAI API Endpoint - HTTP endpoint for the Responses API (override to point at compatible gateways). */
+  "openaiApiEndpoint"?: string,
   /** Default OpenAI Model - Model name used when sending prompts (overridden by prompt metadata). */
   "openaiModel"?: string,
   /** Default Temperature - Temperature value used for OpenAI sends when not specified in a prompt. */

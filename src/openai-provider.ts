@@ -18,9 +18,11 @@ interface ProviderPreferences {
   openaiMaxTokens?: string;
   enableSend: boolean;
   openaiApiKey?: string;
+  openaiApiEndpoint?: string;
 }
 
-const DEFAULT_MODEL = "gpt-4.1-mini";
+const DEFAULT_MODEL = "gpt-5-mini";
+const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
 
 export async function sendPromptToOpenAI(
   options: SendPromptOptions,
@@ -75,7 +77,9 @@ export async function sendPromptToOpenAI(
     ],
   };
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const endpoint = preferences.openaiApiEndpoint?.trim() || DEFAULT_ENDPOINT;
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

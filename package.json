@@ -67,11 +67,20 @@
       "required": false
     },
     {
+      "name": "openaiApiEndpoint",
+      "title": "OpenAI API Endpoint",
+      "description": "HTTP endpoint for the Responses API (override to point at compatible gateways).",
+      "type": "textfield",
+      "placeholder": "https://api.openai.com/v1/responses",
+      "label": "API Endpoint",
+      "required": false
+    },
+    {
       "name": "openaiModel",
       "title": "Default OpenAI Model",
       "description": "Model name used when sending prompts (overridden by prompt metadata).",
       "type": "textfield",
-      "placeholder": "gpt-4.1-mini",
+      "placeholder": "gpt-5-mini",
       "label": "Default OpenAI Model",
       "required": false
     },
