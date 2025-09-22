@@ -607,7 +607,7 @@ function PromptFormView({
           ) : null}
           <Action.Push
             title="Manage OpenAI Key"
-            shortcut={{ modifiers: ["cmd"], key: "k" }}
+            shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
             target={
               <ManageOpenAIKeyForm
                 onUpdated={(present) => setHasOpenAIKey(present)}
