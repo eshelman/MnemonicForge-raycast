@@ -30,7 +30,6 @@ import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
 import { usePromptIndex } from "./use-prompt-index";
 
 interface RunPromptFormValues extends Form.Values {
-  promptId?: string;
   [key: string]: unknown;
 }
 
@@ -82,7 +81,7 @@ export default function PromptsCommand() {
       return;
     }
 
-    const formValues: RunPromptFormValues = { promptId: record.id };
+    const formValues: RunPromptFormValues = {};
     const parameters = record.frontMatter.parameters ?? [];
     for (const parameter of parameters) {
       const fieldId = fieldNameForParameter(parameter);
@@ -302,7 +301,7 @@ function PromptFormView({
     externalEditorCommand,
   } = preferences;
 
-  const { isLoading, error, records, hasIndex } = usePromptIndex(promptsPath);
+  const { isLoading, records, hasIndex } = usePromptIndex(promptsPath);
 
   const [selectedPromptId, setSelectedPromptId] = useState<string | null>(
     initialPromptId,
@@ -358,22 +357,21 @@ function PromptFormView({
     [records, selectedPromptId],
   );
 
-  const dropdownValue = useMemo(() => {
-    if (!selectedPromptId) {
-      return undefined;
-    }
-    return records.some((record) => record.id === selectedPromptId)
-      ? selectedPromptId
-      : undefined;
-  }, [records, selectedPromptId]);
-
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
+  const promptTitle = selectedRecord
+    ? (selectedRecord.frontMatter?.title ?? selectedRecord.relativePath)
+    : "No prompt selected";
+  const promptSummary = selectedRecord
+    ? selectedRecord.frontMatter?.description || selectedRecord.excerpt || ""
+    : "Select a prompt from the list to configure parameters.";
+  const promptContent =
+    selectedRecord?.content ??
+    "Select a prompt from the list to preview its content.";
+
   const formKey = selectedPromptId ?? "no-prompt";
 
   const prepareRender = async (values: RunPromptFormValues) => {
-    const promptId =
-      (values.promptId as string | undefined) ?? selectedPromptId ?? undefined;
-    const record = records.find((item) => item.id === promptId);
+    const record = selectedRecord;
 
     if (!record) {
       await showToast({
@@ -619,7 +617,7 @@ function PromptFormView({
             onAction={openExtensionPreferences}
           />
           <Action.Push
-            title="Manage OpenAI Key"
+            title={hasOpenAIKey ? "Manage OpenAI Key" : "Add OpenAI Key"}
             shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
             target={
               <ManageOpenAIKeyForm
@@ -630,62 +628,9 @@ function PromptFormView({
         </ActionPanel>
       }
     >
-      <Form.Dropdown
-        id="promptId"
-        title="Prompt"
-        placeholder={error ? "Prompts unavailable" : "Select a prompt"}
-        value={dropdownValue}
-        onChange={setSelectedPromptId}
-      >
-        {records.map((record) => (
-          <Form.Dropdown.Item
-            key={record.id}
-            value={record.id}
-            title={record.frontMatter?.title ?? record.relativePath}
-            icon={record.validationIssues.length ? Icon.Warning : Icon.Document}
-            keywords={[record.relativePath]}
-          />
-        ))}
-      </Form.Dropdown>
-
-      <Form.Description
-        title="Prompts Folder"
-        text={promptsPath ?? "Not configured"}
-      />
-      <Form.Description
-        title="Paste After Copy"
-        text={pasteAfterCopy ? "Enabled" : "Disabled"}
-      />
-      <Form.Description
-        title="OpenAI Send"
-        text={enableSend ? "Enabled" : "Disabled"}
-      />
-      <Form.Description
-        title="OpenAI API Key"
-        text={
-          hasOpenAIKey
-            ? "Key stored in Raycast local storage."
-            : "Not configured"
-        }
-      />
-
-      {selectedRecord ? (
-        <Form.Description
-          title="Selected Prompt"
-          text={
-            selectedRecord.frontMatter?.description ??
-            selectedRecord.excerpt.slice(0, 140)
-          }
-        />
-      ) : (
-        <Form.Description
-          title="Selected Prompt"
-          text="Choose a prompt to configure parameters."
-        />
-      )}
-
-      {lastContextSummary ? (
-        <Form.Description title="Context" text={lastContextSummary} />
+      <Form.Description title="Prompt" text={promptTitle} />
+      {promptSummary ? (
+        <Form.Description title="Summary" text={promptSummary} />
       ) : null}
 
       {selectedRecord?.validationIssues.length ? (
@@ -695,6 +640,10 @@ function PromptFormView({
             .map((issue) => issue.message)
             .join("\n")}
         />
+      ) : null}
+
+      {lastContextSummary ? (
+        <Form.Description title="Context" text={lastContextSummary} />
       ) : null}
 
       <Form.Separator />
@@ -707,6 +656,10 @@ function PromptFormView({
       ) : (
         parameterFields.map((parameter) => renderParameterField(parameter))
       )}
+
+      <Form.Separator />
+
+      <Form.Description title="Prompt Content" text={promptContent} />
 
       {lastRendered || lastSendResult ? (
         <>
