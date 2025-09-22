@@ -9,6 +9,7 @@ import {
   Icon,
   List,
   Toast,
+  openExtensionPreferences,
   showToast,
 } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
@@ -21,11 +22,11 @@ import {
   setStoredOpenAIKey,
 } from "./openai-keychain";
 import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
-import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
 import { PromptSearchResult } from "./prompt-index";
 import { PromptParameter, PromptRecord } from "./prompt-types";
 import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 import { promptHasParameters } from "./prompt-utils";
+import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
 import { usePromptIndex } from "./use-prompt-index";
 
 interface RunPromptFormValues extends Form.Values {
@@ -35,6 +36,8 @@ interface RunPromptFormValues extends Form.Values {
 
 export default function PromptsCommand() {
   const preferences = getExtensionPreferences();
+  const [searchText, setSearchText] = useState("");
+
   const {
     promptsPath,
     pasteAfterCopy,
@@ -47,7 +50,6 @@ export default function PromptsCommand() {
 
   const { isLoading, error, records, hasIndex, search } =
     usePromptIndex(promptsPath);
-  const [searchText, setSearchText] = useState("");
 
   useEffect(() => {
     if (error && promptsPath) {
@@ -131,6 +133,7 @@ export default function PromptsCommand() {
       console.debug("Prompt quick render", {
         promptId: record.id,
         context: promptContext,
+        preferences,
       });
     } catch (caught) {
       const message =
@@ -266,6 +269,11 @@ export default function PromptsCommand() {
                 <Action.ShowInFinder
                   title="Reveal in Finder"
                   path={record.filePath}
+                />
+                <Action
+                  title="Open Extension Preferences"
+                  icon={Icon.Gear}
+                  onAction={openExtensionPreferences}
                 />
               </ActionPanel>
             }
@@ -605,6 +613,11 @@ function PromptFormView({
               target={<SendResultPreview result={lastSendResult} />}
             />
           ) : null}
+          <Action
+            title="Open Extension Preferences"
+            icon={Icon.Gear}
+            onAction={openExtensionPreferences}
+          />
           <Action.Push
             title="Manage OpenAI Key"
             shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}

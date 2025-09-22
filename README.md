@@ -37,7 +37,7 @@ All commands share the following preferences:
 - Context capture toggles – Collect clipboard/selection/app/date data for templates.
 - `External Editor` – Optional command (for example `subl` or `code`) used when opening prompt files from Raycast.
 
-You can store an OpenAI API key via the **Manage OpenAI API Key** action while running a prompt.
+You can store an OpenAI API key via the **Manage OpenAI API Key** action while running a prompt. Use Raycast’s extension preferences (⌘, → Extensions → Mnemonic Forge) or the in-command “Open Extension Preferences” action to tweak defaults.
 
 ## Folder Structure
 

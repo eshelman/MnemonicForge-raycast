@@ -7,8 +7,13 @@
   "author": "eliot_eshelman",
   "license": "MIT",
   "icon": "extension-icon.png",
-  "platforms": ["macOS", "Windows"],
-  "categories": ["Productivity"],
+  "platforms": [
+    "macOS",
+    "Windows"
+  ],
+  "categories": [
+    "Productivity"
+  ],
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
@@ -16,7 +21,7 @@
     "lint:fix": "ray lint --fix",
     "typecheck": "tsc --noEmit"
   },
- "commands": [
+  "commands": [
     {
       "name": "prompts",
       "title": "Prompts",
