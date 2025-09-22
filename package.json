@@ -59,6 +59,14 @@
       "required": false
     },
     {
+      "name": "openaiApiKey",
+      "title": "OpenAI API Key",
+      "description": "Used when prompts are sent directly to OpenAI.",
+      "type": "password",
+      "label": "OpenAI API Key",
+      "required": false
+    },
+    {
       "name": "openaiModel",
       "title": "Default OpenAI Model",
       "description": "Model name used when sending prompts (overridden by prompt metadata).",

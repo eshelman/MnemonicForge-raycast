@@ -14,6 +14,8 @@ type ExtensionPreferences = {
   "pasteAfterCopy": boolean,
   /** Enable OpenAI Send - Allow prompts to be sent directly to OpenAI when ⌘↵ is pressed. */
   "enableSend": boolean,
+  /** OpenAI API Key - Used when prompts are sent directly to OpenAI. */
+  "openaiApiKey"?: string,
   /** Default OpenAI Model - Model name used when sending prompts (overridden by prompt metadata). */
   "openaiModel"?: string,
   /** Default Temperature - Temperature value used for OpenAI sends when not specified in a prompt. */

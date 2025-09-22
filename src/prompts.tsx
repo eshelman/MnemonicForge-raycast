@@ -16,11 +16,6 @@ import { useEffect, useMemo, useState } from "react";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
 import { openInExternalEditor } from "./editor-utils";
-import {
-  getStoredOpenAIKey,
-  removeStoredOpenAIKey,
-  setStoredOpenAIKey,
-} from "./openai-keychain";
 import { sendPromptToOpenAI, SendPromptResult } from "./openai-provider";
 import { PromptSearchResult } from "./prompt-index";
 import { PromptParameter, PromptRecord } from "./prompt-types";
@@ -129,11 +124,12 @@ export default function PromptsCommand() {
         message: "Copied to clipboard",
       });
 
-      console.debug("Prompt quick render", {
-        promptId: record.id,
-        context: promptContext,
-        preferences,
-      });
+      if (preferences.debugLog) {
+        console.debug("Prompt quick render", {
+          promptId: record.id,
+          contextKeys: Object.keys(promptContext),
+        });
+      }
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Failed to render prompt";
@@ -317,16 +313,6 @@ function PromptFormView({
   const [lastContextSummary, setLastContextSummary] = useState<string | null>(
     null,
   );
-  const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
-
-  useEffect(() => {
-    refreshOpenAIKeyPresence();
-  }, []);
-
-  async function refreshOpenAIKeyPresence() {
-    const key = await getStoredOpenAIKey();
-    setHasOpenAIKey(Boolean(key));
-  }
 
   useEffect(() => {
     if (!records.length) {
@@ -431,7 +417,6 @@ function PromptFormView({
       const timestamped = { ...prepared.rendered, renderedAt: new Date() };
       setLastRendered(timestamped);
       setLastSendResult(null);
-      refreshOpenAIKeyPresence();
 
       if (options.copy) {
         await Clipboard.copy(timestamped.output);
@@ -452,11 +437,12 @@ function PromptFormView({
           : "Rendered without copying",
       });
 
-      console.debug("Prompt rendered", {
-        promptId: prepared.record.id,
-        preferences,
-        context: prepared.promptContext,
-      });
+      if (preferences.debugLog) {
+        console.debug("Prompt rendered", {
+          promptId: prepared.record.id,
+          contextKeys: Object.keys(prepared.promptContext),
+        });
+      }
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Failed to render prompt";
@@ -499,7 +485,6 @@ function PromptFormView({
       });
 
       setLastSendResult({ prompt: timestamped, response });
-      refreshOpenAIKeyPresence();
 
       toast.style = Toast.Style.Success;
       toast.title = "Sent to OpenAI";
@@ -616,15 +601,6 @@ function PromptFormView({
             icon={Icon.Gear}
             onAction={openExtensionPreferences}
           />
-          <Action.Push
-            title={hasOpenAIKey ? "Manage OpenAI Key" : "Add OpenAI Key"}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "k" }}
-            target={
-              <ManageOpenAIKeyForm
-                onUpdated={(present) => setHasOpenAIKey(present)}
-              />
-            }
-          />
         </ActionPanel>
       }
     >
@@ -659,7 +635,12 @@ function PromptFormView({
 
       <Form.Separator />
 
-      <Form.Description title="Prompt Content" text={promptContent} />
+      <Form.TextArea
+        id="promptContentPreview"
+        title="Prompt Content"
+        value={promptContent}
+        onChange={() => {}}
+      />
 
       {lastRendered || lastSendResult ? (
         <>
@@ -682,81 +663,6 @@ function PromptFormView({
           ) : null}
         </>
       ) : null}
-    </Form>
-  );
-}
-
-function ManageOpenAIKeyForm({
-  onUpdated,
-}: {
-  onUpdated: (present: boolean) => void;
-}) {
-  const [hasKey, setHasKey] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-
-  useEffect(() => {
-    getStoredOpenAIKey().then((key) => {
-      setHasKey(Boolean(key));
-    });
-  }, []);
-
-  async function handleSubmit(values: { apiKey?: string }) {
-    const apiKey = values.apiKey?.trim();
-    if (!apiKey) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Enter an API key",
-      });
-      return;
-    }
-
-    await setStoredOpenAIKey(apiKey);
-    setHasKey(true);
-    onUpdated(true);
-    await showToast({ style: Toast.Style.Success, title: "OpenAI key saved" });
-  }
-
-  async function handleRemove() {
-    setIsRemoving(true);
-    try {
-      await removeStoredOpenAIKey();
-      setHasKey(false);
-      onUpdated(false);
-      await showToast({
-        style: Toast.Style.Success,
-        title: "OpenAI key removed",
-      });
-    } finally {
-      setIsRemoving(false);
-    }
-  }
-
-  return (
-    <Form
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm title="Save OpenAI Key" onSubmit={handleSubmit} />
-          {hasKey ? (
-            <Action
-              title={isRemoving ? "Removing…" : "Remove OpenAI Key"}
-              onAction={handleRemove}
-              style={Action.Style.Destructive}
-            />
-          ) : null}
-        </ActionPanel>
-      }
-    >
-      <Form.Description
-        title="Status"
-        text={
-          hasKey ? "Key stored in Raycast local storage." : "No key stored."
-        }
-      />
-      <Form.PasswordField
-        id="apiKey"
-        title="OpenAI API Key"
-        placeholder="sk-..."
-      />
     </Form>
   );
 }

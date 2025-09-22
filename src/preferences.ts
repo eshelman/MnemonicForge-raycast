@@ -4,6 +4,7 @@ export type ExtensionPreferences = {
   promptsPath: string;
   pasteAfterCopy: boolean;
   enableSend: boolean;
+  openaiApiKey?: string;
   openaiModel?: string;
   openaiTemperature?: string;
   openaiMaxTokens?: string;
