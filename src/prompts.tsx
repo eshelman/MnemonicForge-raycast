@@ -28,6 +28,22 @@ interface RunPromptFormValues extends Form.Values {
   [key: string]: unknown;
 }
 
+function sanitizeContextForLog(
+  context: Record<string, unknown>,
+  maxLength = 200,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(context)) {
+    if (typeof value === "string") {
+      sanitized[key] =
+        value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 export default function PromptsCommand() {
   const preferences = getExtensionPreferences();
   const [searchText, setSearchText] = useState("");
@@ -127,7 +143,7 @@ export default function PromptsCommand() {
       if (preferences.debugLog) {
         console.debug("Prompt quick render", {
           promptId: record.id,
-          contextKeys: Object.keys(promptContext),
+          context: sanitizeContextForLog(promptContext),
         });
       }
     } catch (caught) {
@@ -440,7 +456,7 @@ function PromptFormView({
       if (preferences.debugLog) {
         console.debug("Prompt rendered", {
           promptId: prepared.record.id,
-          contextKeys: Object.keys(prepared.promptContext),
+          context: sanitizeContextForLog(prepared.promptContext),
         });
       }
     } catch (caught) {
