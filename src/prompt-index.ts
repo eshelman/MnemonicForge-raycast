@@ -118,6 +118,7 @@ function deriveTags(
 function buildRecord(
   filePath: string,
   relativePath: string,
+  rootPath: string,
   modifiedAt: Date,
   content: string,
   frontMatter?: PromptFrontMatter,
@@ -130,6 +131,7 @@ function buildRecord(
     id: relativePath,
     filePath,
     relativePath,
+    rootPath,
     tags,
     frontMatter,
     content,
@@ -292,6 +294,7 @@ export class PromptIndex {
       const record = buildRecord(
         filePath,
         relativePath,
+        this.root,
         fileStats.mtime,
         parsed.content,
         frontMatter,

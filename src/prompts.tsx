@@ -12,6 +12,9 @@ import {
   openExtensionPreferences,
   showToast,
 } from "@raycast/api";
+import { stat } from "fs/promises";
+import path from "path";
+import { pathToFileURL } from "url";
 import { useEffect, useMemo, useState } from "react";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
@@ -42,6 +45,130 @@ function sanitizeContextForLog(
     }
   }
   return sanitized;
+}
+
+type ClipboardPastePayload = Parameters<typeof Clipboard.paste>[0];
+
+function formatCopySuccessMessage(attachmentCount: number): string {
+  if (!attachmentCount) {
+    return "Copied to clipboard";
+  }
+
+  return attachmentCount === 1
+    ? "Copied with 1 attachment"
+    : `Copied with ${attachmentCount} attachments`;
+}
+
+async function attemptPaste(content: ClipboardPastePayload): Promise<void> {
+  try {
+    await Clipboard.paste(content);
+  } catch (error) {
+    console.warn("Paste failed", error);
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resolveAttachmentPaths(record: PromptRecord): Promise<string[]> {
+  const entries = record.frontMatter?.files_to_paste ?? [];
+  if (!entries.length) {
+    return [];
+  }
+
+  const root = path.resolve(record.rootPath);
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+
+  for (const entry of entries) {
+    const trimmed = entry?.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const candidate = path.isAbsolute(trimmed)
+      ? path.resolve(trimmed)
+      : path.resolve(root, trimmed);
+
+    const relativeToRoot = path.relative(root, candidate);
+    if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+      throw new Error(
+        `Attachment path '${trimmed}' must stay within the prompts directory`,
+      );
+    }
+
+    if (seen.has(candidate)) {
+      continue;
+    }
+
+    const fileStats = await stat(candidate).catch(() => null);
+    if (!fileStats) {
+      throw new Error(`Attachment file not found: ${trimmed}`);
+    }
+
+    if (!fileStats.isFile()) {
+      throw new Error(`Attachment must be a file: ${trimmed}`);
+    }
+
+    seen.add(candidate);
+    resolved.push(candidate);
+  }
+
+  return resolved;
+}
+
+async function copyPromptToClipboard({
+  record,
+  text,
+  pasteAfterCopy,
+}: {
+  record: PromptRecord;
+  text: string;
+  pasteAfterCopy: boolean;
+}): Promise<string[]> {
+  const attachments = await resolveAttachmentPaths(record);
+
+  await Clipboard.copy(text);
+  await sleep(50);
+  if (pasteAfterCopy) {
+    await attemptPaste(text);
+    await sleep(100);
+  }
+
+  if (!attachments.length) {
+    return attachments;
+  }
+
+  try {
+    for (const attachment of attachments) {
+      const fileURL = pathToFileURL(attachment);
+      const fileContent = { file: fileURL } as unknown as Clipboard.Content;
+      try {
+        await Clipboard.copy(fileContent);
+        await sleep(75);
+      } catch (error) {
+        throw new Error(
+          error instanceof Error
+            ? `Failed to copy attachment '${path.basename(attachment)}': ${error.message}`
+            : `Failed to copy attachment '${path.basename(attachment)}'`,
+        );
+      }
+
+      if (pasteAfterCopy) {
+        await attemptPaste(fileContent);
+        await sleep(150);
+      }
+    }
+  } finally {
+    await sleep(100);
+    await Clipboard.copy(text);
+  }
+
+  return attachments;
 }
 
 export default function PromptsCommand() {
@@ -125,25 +252,23 @@ export default function PromptsCommand() {
         context: promptContext,
       });
 
-      await Clipboard.copy(rendered.output);
-      if (pasteAfterCopy) {
-        try {
-          await Clipboard.paste(rendered.output);
-        } catch (clipboardError) {
-          console.warn("Paste failed", clipboardError);
-        }
-      }
+      const attachments = await copyPromptToClipboard({
+        record,
+        text: rendered.output,
+        pasteAfterCopy,
+      });
 
       await showToast({
         style: Toast.Style.Success,
         title: "Prompt ready",
-        message: "Copied to clipboard",
+        message: formatCopySuccessMessage(attachments.length),
       });
 
       if (preferences.debugLog) {
         console.debug("Prompt quick render", {
           promptId: record.id,
           context: sanitizeContextForLog(promptContext),
+          attachments,
         });
       }
     } catch (caught) {
@@ -434,22 +559,20 @@ function PromptFormView({
       setLastRendered(timestamped);
       setLastSendResult(null);
 
+      let attachments: string[] = [];
       if (options.copy) {
-        await Clipboard.copy(timestamped.output);
-        if (options.paste) {
-          try {
-            await Clipboard.paste(timestamped.output);
-          } catch (clipboardError) {
-            console.warn("Paste failed", clipboardError);
-          }
-        }
+        attachments = await copyPromptToClipboard({
+          record: prepared.record,
+          text: timestamped.output,
+          pasteAfterCopy: options.paste,
+        });
       }
 
       await showToast({
         style: Toast.Style.Success,
         title: "Prompt ready",
         message: options.copy
-          ? "Copied to clipboard"
+          ? formatCopySuccessMessage(attachments.length)
           : "Rendered without copying",
       });
 
@@ -457,6 +580,7 @@ function PromptFormView({
         console.debug("Prompt rendered", {
           promptId: prepared.record.id,
           context: sanitizeContextForLog(prepared.promptContext),
+          attachments,
         });
       }
     } catch (caught) {

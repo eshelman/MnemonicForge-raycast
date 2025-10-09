@@ -7,6 +7,7 @@ const baseRecord: Omit<PromptRecord, "frontMatter"> = {
   id: "example",
   filePath: "/tmp/example.md",
   relativePath: "example.md",
+  rootPath: "/tmp",
   tags: [],
   content: "",
   excerpt: "",

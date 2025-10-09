@@ -31,6 +31,7 @@ export interface PromptFrontMatter {
   title: string;
   description?: string;
   tags?: string[];
+  files_to_paste?: string[];
   parameters?: PromptParameter[];
   model?: PromptModelConfig;
   comments?: string[];
@@ -45,6 +46,7 @@ export interface PromptRecord {
   id: string;
   filePath: string;
   relativePath: string;
+  rootPath: string;
   tags: string[];
   frontMatter?: PromptFrontMatter;
   content: string;

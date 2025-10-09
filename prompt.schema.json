@@ -40,6 +40,10 @@
     "comments": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "files_to_paste": {
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "additionalProperties": false

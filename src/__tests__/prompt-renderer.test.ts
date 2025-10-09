@@ -8,6 +8,7 @@ test("renderPrompt exposes parameters at the root scope", () => {
     id: "test-prompt",
     filePath: "/tmp/test-prompt.md",
     relativePath: "test-prompt.md",
+    rootPath: "/tmp",
     tags: [],
     frontMatter: {
       schema_version: 1,
