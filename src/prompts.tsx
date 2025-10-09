@@ -10,6 +10,7 @@ import {
   List,
   Toast,
   openExtensionPreferences,
+  popToRoot,
   showToast,
 } from "@raycast/api";
 import { stat } from "fs/promises";
@@ -263,6 +264,8 @@ export default function PromptsCommand() {
         title: "Prompt ready",
         message: formatCopySuccessMessage(attachments.length),
       });
+
+      await popToRoot({ clearSearchBar: true });
 
       if (preferences.debugLog) {
         console.debug("Prompt quick render", {
@@ -575,6 +578,8 @@ function PromptFormView({
           ? formatCopySuccessMessage(attachments.length)
           : "Rendered without copying",
       });
+
+      await popToRoot({ clearSearchBar: true });
 
       if (preferences.debugLog) {
         console.debug("Prompt rendered", {
