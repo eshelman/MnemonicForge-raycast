@@ -32,6 +32,8 @@ export interface PromptFrontMatter {
   description?: string;
   tags?: string[];
   files_to_paste?: string[];
+  requires_file?: boolean;
+  preferred_clipboard_types?: Array<"text" | "url" | "file">;
   parameters?: PromptParameter[];
   model?: PromptModelConfig;
   comments?: string[];

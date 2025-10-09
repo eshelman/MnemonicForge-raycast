@@ -44,6 +44,16 @@
     "files_to_paste": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "requires_file": {
+      "type": "boolean"
+    },
+    "preferred_clipboard_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["text", "url", "file"]
+      }
     }
   },
   "additionalProperties": false

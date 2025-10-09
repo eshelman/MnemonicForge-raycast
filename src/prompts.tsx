@@ -15,7 +15,7 @@ import {
 } from "@raycast/api";
 import { stat } from "fs/promises";
 import path from "path";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { useEffect, useMemo, useState } from "react";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
@@ -27,6 +27,14 @@ import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 import { promptHasParameters } from "./prompt-utils";
 import { getExtensionPreferences, ExtensionPreferences } from "./preferences";
 import { usePromptIndex } from "./use-prompt-index";
+
+type ClipboardCategory = "empty" | "url" | "file" | "text";
+
+interface ClipboardSnapshot {
+  category: ClipboardCategory;
+  text?: string;
+  file?: string;
+}
 
 interface RunPromptFormValues extends Form.Values {
   [key: string]: unknown;
@@ -126,12 +134,58 @@ async function copyPromptToClipboard({
   record,
   text,
   pasteAfterCopy,
+  existingFiles = [],
 }: {
   record: PromptRecord;
   text: string;
   pasteAfterCopy: boolean;
+  existingFiles?: string[];
 }): Promise<string[]> {
-  const attachments = await resolveAttachmentPaths(record);
+  const attachmentsFromPrompt = await resolveAttachmentPaths(record);
+
+  const combinedAttachments = new Map<string, string>();
+  const pushAttachment = async (filePath: string) => {
+    if (!filePath.trim()) {
+      return;
+    }
+
+    const input = filePath.trim();
+    let absolutePath: string;
+    if (input.startsWith("file://")) {
+      try {
+        absolutePath = fileURLToPath(input);
+      } catch {
+        absolutePath = input.replace(/^file:\/\//i, "");
+      }
+    } else {
+      absolutePath = input;
+    }
+
+    const normalized = path.resolve(absolutePath);
+    if (combinedAttachments.has(normalized)) {
+      return;
+    }
+
+    const fileStats = await stat(normalized).catch(() => null);
+    if (!fileStats || !fileStats.isFile()) {
+      throw new Error(`Attachment file not found: ${filePath}`);
+    }
+
+    combinedAttachments.set(normalized, normalized);
+  };
+
+  for (const attachment of attachmentsFromPrompt) {
+    await pushAttachment(attachment);
+  }
+
+  for (const existing of existingFiles) {
+    if (!existing?.trim()) {
+      continue;
+    }
+    await pushAttachment(existing.trim());
+  }
+
+  const attachments = [...combinedAttachments.values()];
 
   await Clipboard.copy(text);
   await sleep(50);
@@ -175,6 +229,12 @@ async function copyPromptToClipboard({
 export default function PromptsCommand() {
   const preferences = getExtensionPreferences();
   const [searchText, setSearchText] = useState("");
+  const [clipboardSnapshot, setClipboardSnapshot] = useState<ClipboardSnapshot>({
+    category: "empty",
+  });
+  const [clipboardFilter, setClipboardFilter] = useState<"none" | "url" | "file">(
+    "none",
+  );
 
   const {
     promptsPath,
@@ -188,6 +248,55 @@ export default function PromptsCommand() {
 
   const { isLoading, error, records, hasIndex, search } =
     usePromptIndex(promptsPath);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function analyzeClipboard() {
+      try {
+        const content = await Clipboard.read();
+        if (cancelled) {
+          return;
+        }
+
+        const filePath = content.file?.trim();
+        const text = content.text?.trim();
+
+        if (filePath) {
+          setClipboardSnapshot({ category: "file", file: filePath });
+          setClipboardFilter("file");
+          return;
+        }
+
+        if (text) {
+          if (isLikelyUrl(text)) {
+            setClipboardSnapshot({ category: "url", text });
+            setClipboardFilter("url");
+            return;
+          }
+
+          setClipboardSnapshot({ category: "text", text });
+          setClipboardFilter("none");
+          return;
+        }
+
+        setClipboardSnapshot({ category: "empty" });
+        setClipboardFilter("none");
+      } catch (caught) {
+        console.warn("Clipboard analysis failed", caught);
+        if (!cancelled) {
+          setClipboardSnapshot({ category: "empty" });
+          setClipboardFilter("none");
+        }
+      }
+    }
+
+    analyzeClipboard();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (error && promptsPath) {
@@ -204,12 +313,57 @@ export default function PromptsCommand() {
       return [];
     }
 
-    if (!searchText.trim()) {
-      return records.map((record, index) => ({ record, score: index }));
+    const query = searchText.trim();
+    if (query) {
+      return search(query);
     }
 
-    return search(searchText);
-  }, [hasIndex, error, records, searchText, search]);
+    let baseRecords = records;
+    if (clipboardFilter === "url") {
+      const filtered = records.filter(promptRequestsUrl);
+      if (filtered.length) {
+        baseRecords = filtered;
+      }
+    } else if (clipboardFilter === "file") {
+      const filtered = records.filter(promptRequestsFile);
+      if (filtered.length) {
+        baseRecords = filtered;
+      }
+    }
+
+    return baseRecords.map((record, index) => ({ record, score: index }));
+  }, [hasIndex, error, records, searchText, search, clipboardFilter]);
+
+  const searchPlaceholder = useMemo(() => {
+    if (searchText.trim()) {
+      return "Search prompts";
+    }
+
+    switch (clipboardFilter) {
+      case "url":
+        return "Prompts requesting a URL";
+      case "file":
+        return "Prompts expecting a file";
+      default:
+        return "Search prompts";
+    }
+  }, [clipboardFilter, searchText]);
+
+  const handleSearchTextChange = (value: string) => {
+    setSearchText(value);
+
+    if (value.trim()) {
+      setClipboardFilter("none");
+    } else {
+      if (clipboardSnapshot.category === "url") {
+        setClipboardFilter("url");
+      } else if (clipboardSnapshot.category === "file") {
+        setClipboardFilter("file");
+      } else {
+        setClipboardFilter("none");
+      }
+    }
+  };
 
   const handleQuickRender = async (record: PromptRecord) => {
     if (!record.frontMatter || record.validationIssues.length) {
@@ -226,6 +380,25 @@ export default function PromptsCommand() {
       const fieldId = fieldNameForParameter(parameter);
       if (parameter.default !== undefined) {
         formValues[fieldId] = parameter.default;
+      }
+    }
+
+    if (
+      (clipboardSnapshot.category === "text" ||
+        clipboardSnapshot.category === "url") &&
+      clipboardSnapshot.text &&
+      parameters.length
+    ) {
+      const firstParameter = parameters[0];
+      if (parameterSupportsClipboardPrefill(firstParameter)) {
+        const fieldId = fieldNameForParameter(firstParameter);
+        const existing = formValues[fieldId];
+        if (
+          typeof existing !== "string" ||
+          !existing.trim()
+        ) {
+          formValues[fieldId] = clipboardSnapshot.text.trim();
+        }
       }
     }
 
@@ -257,6 +430,10 @@ export default function PromptsCommand() {
         record,
         text: rendered.output,
         pasteAfterCopy,
+        existingFiles:
+          clipboardSnapshot.category === "file" && clipboardSnapshot.file
+            ? [clipboardSnapshot.file]
+            : [],
       });
 
       await showToast({
@@ -287,8 +464,8 @@ export default function PromptsCommand() {
 
   return (
     <List
-      searchBarPlaceholder="Search prompts"
-      onSearchTextChange={setSearchText}
+      searchBarPlaceholder={searchPlaceholder}
+      onSearchTextChange={handleSearchTextChange}
       isLoading={isLoading}
       throttle
     >
@@ -363,6 +540,7 @@ export default function PromptsCommand() {
                         <PromptFormView
                           preferences={preferences}
                           initialPromptId={record.id}
+                          clipboardSnapshot={clipboardSnapshot}
                         />
                       }
                     />
@@ -386,6 +564,7 @@ export default function PromptsCommand() {
                         <PromptFormView
                           preferences={preferences}
                           initialPromptId={record.id}
+                          clipboardSnapshot={clipboardSnapshot}
                         />
                       }
                     />
@@ -426,9 +605,11 @@ export default function PromptsCommand() {
 function PromptFormView({
   preferences,
   initialPromptId,
+  clipboardSnapshot,
 }: {
   preferences: ExtensionPreferences;
   initialPromptId: string;
+  clipboardSnapshot: ClipboardSnapshot;
 }) {
   const {
     promptsPath,
@@ -488,6 +669,15 @@ function PromptFormView({
   );
 
   const parameterFields = selectedRecord?.frontMatter?.parameters ?? [];
+  const firstFieldPrefill = useMemo(() => {
+    if (
+      clipboardSnapshot.category === "text" ||
+      clipboardSnapshot.category === "url"
+    ) {
+      return clipboardSnapshot.text?.trim() || undefined;
+    }
+    return undefined;
+  }, [clipboardSnapshot]);
   const promptTitle = selectedRecord
     ? (selectedRecord.frontMatter?.title ?? selectedRecord.relativePath)
     : "No prompt selected";
@@ -568,6 +758,10 @@ function PromptFormView({
           record: prepared.record,
           text: timestamped.output,
           pasteAfterCopy: options.paste,
+          existingFiles:
+            clipboardSnapshot.category === "file" && clipboardSnapshot.file
+              ? [clipboardSnapshot.file]
+              : [],
         });
       }
 
@@ -775,7 +969,12 @@ function PromptFormView({
           text="This prompt does not declare any parameters."
         />
       ) : (
-        parameterFields.map((parameter) => renderParameterField(parameter))
+        parameterFields.map((parameter, index) =>
+          renderParameterField(parameter, {
+            index,
+            prefill: index === 0 ? firstFieldPrefill : undefined,
+          }),
+        )
       )}
 
       <Form.Separator />
@@ -842,14 +1041,60 @@ function collectParameters(
   return { collected, missing };
 }
 
-function renderParameterField(parameter: PromptParameter) {
+function promptRequestsUrl(record: PromptRecord): boolean {
+  if (promptPrefersClipboardType(record, "url")) {
+    return true;
+  }
+
+  const parameters = record.frontMatter?.parameters ?? [];
+  if (!parameters.length) {
+    return false;
+  }
+
+  return parameters.some((parameter) =>
+    parameterHints(parameter).some((hint) =>
+      hint.includes("url") || hint.includes("link"),
+    ),
+  );
+}
+
+function promptRequestsFile(record: PromptRecord): boolean {
+  if (promptPrefersClipboardType(record, "file")) {
+    return true;
+  }
+
+  if (record.frontMatter?.requires_file) {
+    return true;
+  }
+
+  const parameters = record.frontMatter?.parameters ?? [];
+  if (!parameters.length) {
+    return false;
+  }
+
+  const fileKeywords = ["file", "upload", "attachment", "document"];
+  return parameters.some((parameter) =>
+    parameterHints(parameter).some((hint) =>
+      fileKeywords.some((keyword) => hint.includes(keyword)),
+    ),
+  );
+}
+
+function renderParameterField(
+  parameter: PromptParameter,
+  options: { index: number; prefill?: string },
+) {
   const fieldId = fieldNameForParameter(parameter);
   const label = parameter.label ?? parameter.name;
   const title = parameter.required ? `${label} *` : label;
+  const prefill = options.index === 0 ? options.prefill?.trim() : undefined;
 
   switch (parameter.type) {
     case "text": {
-      const defaultValue = stringifyDefault(parameter.default);
+      const defaultValue = pickDefaultString(
+        stringifyDefault(parameter.default),
+        prefill,
+      );
       return (
         <Form.TextArea
           key={fieldId}
@@ -926,7 +1171,7 @@ function renderParameterField(parameter: PromptParameter) {
       );
     }
     default:
-      return renderFallbackTextField(fieldId, title, parameter);
+      return renderFallbackTextField(fieldId, title, parameter, prefill);
   }
 }
 
@@ -934,8 +1179,12 @@ function renderFallbackTextField(
   fieldId: string,
   title: string,
   parameter: PromptParameter,
+  prefill?: string,
 ) {
-  const defaultValue = stringifyDefault(parameter.default);
+  const defaultValue = pickDefaultString(
+    stringifyDefault(parameter.default),
+    prefill,
+  );
   return (
     <Form.TextField
       key={fieldId}
@@ -949,6 +1198,57 @@ function renderFallbackTextField(
 
 function fieldNameForParameter(parameter: PromptParameter): string {
   return `param-${parameter.name}`;
+}
+
+function pickDefaultString(current: string, prefill?: string): string {
+  if (prefill && !current.trim()) {
+    return prefill;
+  }
+
+  return current || prefill || "";
+}
+
+function parameterSupportsClipboardPrefill(parameter: PromptParameter): boolean {
+  return parameter.type === "text" || parameter.type === "string";
+}
+
+function promptPrefersClipboardType(
+  record: PromptRecord,
+  type: "text" | "url" | "file",
+): boolean {
+  return record.frontMatter?.preferred_clipboard_types?.includes(type) ?? false;
+}
+
+function parameterHints(parameter: PromptParameter): string[] {
+  const hints = [parameter.name, parameter.label ?? ""];
+  if (parameter.regex) {
+    hints.push(parameter.regex);
+  }
+  return hints
+    .filter(Boolean)
+    .map((hint) => hint.toLowerCase());
+}
+
+function isLikelyUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return true;
+  }
+
+  if (/^www\.[^\s]+$/i.test(trimmed)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`);
+    return Boolean(url.hostname && url.hostname.includes("."));
+  } catch {
+    return false;
+  }
 }
 
 function stringifyDefault(value: unknown): string {
