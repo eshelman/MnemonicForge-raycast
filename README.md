@@ -1,6 +1,6 @@
 # MnemonicForge Raycast Extension
 
-Browse, search, and run prompts from the MnemonicForge library directly inside Raycast. The commands in this extension let you keep prompts versioned in git while offering a native desktop launch experience.
+Browse, search, and run customizeable prompts with Raycast. Keep prompts versioned in git while launching easily and quickly.
 
 ## Command
 
