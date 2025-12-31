@@ -7,6 +7,7 @@ import {
   Detail,
   Form,
   Icon,
+  Keyboard,
   List,
   Toast,
   openExtensionPreferences,
@@ -656,6 +657,7 @@ function PromptFormView({
   const [lastContextSummary, setLastContextSummary] = useState<string | null>(
     null,
   );
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (!records.length) {
@@ -729,23 +731,27 @@ function PromptFormView({
 
     const { collected, missing, invalid } = collectParameters(record, values);
 
-    if (missing.length) {
+    if (missing.length || invalid.length) {
+      const errors: string[] = [];
+      if (missing.length) {
+        errors.push(
+          `Missing required: ${missing.map((p) => p.label ?? p.name).join(", ")}`,
+        );
+      }
+      for (const err of invalid) {
+        errors.push(err.message);
+      }
+      setValidationErrors(errors);
       await showToast({
         style: Toast.Style.Failure,
-        title: "Missing required inputs",
-        message: missing.map((parameter) => parameter.name).join(", "),
+        title: "Validation failed",
+        message: errors[0],
       });
       return;
     }
 
-    if (invalid.length) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Invalid input",
-        message: invalid[0].message,
-      });
-      return;
-    }
+    // Clear any previous validation errors on success
+    setValidationErrors([]);
 
     const contextPreferences = {
       clipboard: contextDefaultClipboard,
@@ -934,13 +940,13 @@ function PromptFormView({
             <Action.CopyToClipboard
               title="Copy Last Output"
               content={lastRendered.output}
-              shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+              shortcut={Keyboard.Shortcut.Common.Copy}
             />
           ) : null}
           {lastRendered ? (
             <Action.Push
               title="Preview Last Output"
-              shortcut={{ modifiers: ["cmd"], key: "y" }}
+              shortcut={Keyboard.Shortcut.Common.ToggleQuickLook}
               target={<PromptPreview rendered={lastRendered} />}
             />
           ) : null}
@@ -1000,13 +1006,18 @@ function PromptFormView({
         )
       )}
 
+      {validationErrors.length > 0 ? (
+        <Form.Description
+          title="⚠ Validation Errors"
+          text={validationErrors.join("\n")}
+        />
+      ) : null}
+
       <Form.Separator />
 
-      <Form.TextArea
-        id="promptContentPreview"
+      <Form.Description
         title="Prompt Content"
-        value={promptContent}
-        onChange={() => {}}
+        text={promptContent.length > 500 ? `${promptContent.slice(0, 500)}…` : promptContent}
       />
 
       {lastRendered || lastSendResult ? (
