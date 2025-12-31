@@ -8,10 +8,12 @@ import {
   Form,
   Icon,
   Keyboard,
+  LaunchProps,
   List,
   Toast,
   openExtensionPreferences,
   popToRoot,
+  showHUD,
   showToast,
 } from "@raycast/api";
 import { stat } from "fs/promises";
@@ -239,7 +241,12 @@ async function copyPromptToClipboard({
   return attachments;
 }
 
-export default function PromptsCommand() {
+interface CommandLaunchProps {
+  draftValues?: RunPromptFormValues;
+  initialPromptId?: string;
+}
+
+export default function PromptsCommand(props: LaunchProps<{ launchContext?: CommandLaunchProps }>) {
   const preferences = getExtensionPreferences();
   const [searchText, setSearchText] = useState("");
   const [clipboardSnapshot, setClipboardSnapshot] = useState<ClipboardSnapshot>({
@@ -248,6 +255,7 @@ export default function PromptsCommand() {
   const [clipboardFilter, setClipboardFilter] = useState<"none" | "url" | "file">(
     "none",
   );
+  const launchContext = props.launchContext;
 
   const {
     promptsPath,
@@ -457,12 +465,7 @@ export default function PromptsCommand() {
             : [],
       });
 
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Prompt ready",
-        message: formatCopySuccessMessage(attachments.length),
-      });
-
+      await showHUD(formatCopySuccessMessage(attachments.length));
       await popToRoot({ clearSearchBar: true });
 
       if (preferences.debugLog) {
@@ -481,12 +484,27 @@ export default function PromptsCommand() {
     }
   };
 
+  const handleFilterChange = (value: string) => {
+    setClipboardFilter(value as "none" | "url" | "file");
+  };
+
   return (
     <List
       searchBarPlaceholder={searchPlaceholder}
       onSearchTextChange={handleSearchTextChange}
       isLoading={isLoading}
       throttle
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Filter by type"
+          value={clipboardFilter}
+          onChange={handleFilterChange}
+        >
+          <List.Dropdown.Item title="All Prompts" value="none" />
+          <List.Dropdown.Item title="URL Prompts" value="url" />
+          <List.Dropdown.Item title="File Prompts" value="file" />
+        </List.Dropdown>
+      }
     >
       {results.length === 0 ? (
         <List.EmptyView
@@ -512,6 +530,7 @@ export default function PromptsCommand() {
                 ? [{ text: record.tags.join(", ") }]
                 : undefined
             }
+            quickLook={{ path: record.filePath, name: record.frontMatter?.title ?? record.relativePath }}
             detail={
               <List.Item.Detail
                 markdown={`**Path:** ${record.relativePath}\n\n${record.excerpt || "(empty file)"}`}
@@ -607,6 +626,7 @@ export default function PromptsCommand() {
                   title="Reveal in Finder"
                   path={record.filePath}
                 />
+                <Action.ToggleQuickLook shortcut={Keyboard.Shortcut.Common.ToggleQuickLook} />
                 <Action
                   title="Open Extension Preferences"
                   icon={Icon.Gear}
@@ -625,10 +645,12 @@ function PromptFormView({
   preferences,
   initialPromptId,
   clipboardSnapshot,
+  draftValues,
 }: {
   preferences: ExtensionPreferences;
   initialPromptId: string;
   clipboardSnapshot: ClipboardSnapshot;
+  draftValues?: RunPromptFormValues;
 }) {
   const {
     promptsPath,
@@ -796,15 +818,13 @@ function PromptFormView({
               ? [clipboardSnapshot.file]
               : [],
         });
+        await showHUD(formatCopySuccessMessage(attachments.length));
+      } else {
+        await showToast({
+          style: Toast.Style.Success,
+          title: "Rendered without copying",
+        });
       }
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Prompt ready",
-        message: options.copy
-          ? formatCopySuccessMessage(attachments.length)
-          : "Rendered without copying",
-      });
 
       await popToRoot({ clearSearchBar: true });
 
@@ -874,6 +894,7 @@ function PromptFormView({
     <Form
       key={formKey}
       isLoading={isLoading && !hasIndex}
+      enableDrafts
       actions={
         <ActionPanel>
           <Action.SubmitForm

@@ -4,12 +4,53 @@ import { watch } from "fs";
 import matter from "gray-matter";
 import Ajv, { ErrorObject } from "ajv";
 import Fuse from "fuse.js";
+import { Cache } from "@raycast/api";
 import schema from "../prompt.schema.json";
 import {
   PromptFrontMatter,
   PromptRecord,
   PromptValidationIssue,
 } from "./prompt-types";
+
+const cache = new Cache();
+const CACHE_KEY_PREFIX = "prompt-index:";
+
+interface CachedPromptRecord {
+  id: string;
+  filePath: string;
+  relativePath: string;
+  rootPath: string;
+  tags: string[];
+  frontMatter?: PromptFrontMatter;
+  content: string;
+  excerpt: string;
+  modifiedAt: string; // ISO string for serialization
+  validationIssues: PromptValidationIssue[];
+}
+
+function serializeRecords(records: PromptRecord[]): string {
+  const cached: CachedPromptRecord[] = records.map((record) => ({
+    ...record,
+    modifiedAt: record.modifiedAt.toISOString(),
+  }));
+  return JSON.stringify(cached);
+}
+
+function deserializeRecords(data: string): PromptRecord[] {
+  try {
+    const cached: CachedPromptRecord[] = JSON.parse(data);
+    return cached.map((record) => ({
+      ...record,
+      modifiedAt: new Date(record.modifiedAt),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function getCacheKey(root: string): string {
+  return `${CACHE_KEY_PREFIX}${root}`;
+}
 
 const VALID_EXTENSIONS = new Set([
   ".md",
@@ -160,6 +201,19 @@ export class PromptIndex {
       return;
     }
 
+    // Try to restore from cache first for faster startup
+    const cacheKey = getCacheKey(this.root);
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      const records = deserializeRecords(cached);
+      for (const record of records) {
+        this.records.set(record.filePath, record);
+      }
+      this.rebuildSearchIndex();
+      this.emitUpdated();
+    }
+
+    // Always do a full refresh to ensure freshness
     await this.refresh();
     this.watch();
     this.initialized = true;
@@ -177,7 +231,18 @@ export class PromptIndex {
     }
 
     this.rebuildSearchIndex();
+    this.saveToCache();
     this.emitUpdated();
+  }
+
+  private saveToCache(): void {
+    try {
+      const records = [...this.records.values()];
+      const cacheKey = getCacheKey(this.root);
+      cache.set(cacheKey, serializeRecords(records));
+    } catch (error) {
+      console.warn("Failed to save prompt index to cache", error);
+    }
   }
 
   async dispose(): Promise<void> {
@@ -313,6 +378,7 @@ export class PromptIndex {
   private removeFile(filePath: string): void {
     if (this.records.delete(filePath)) {
       this.rebuildSearchIndex();
+      this.saveToCache();
       this.emitUpdated();
     }
   }
@@ -345,6 +411,7 @@ export class PromptIndex {
             try {
               await this.ingestFile(filePath, true);
               this.rebuildSearchIndex();
+              this.saveToCache();
               this.emitUpdated();
             } catch (error) {
               // File was likely deleted - remove from index
@@ -365,6 +432,7 @@ export class PromptIndex {
             try {
               await this.ingestFile(filePath, true);
               this.rebuildSearchIndex();
+              this.saveToCache();
               this.emitUpdated();
             } catch (error) {
               console.error("Failed to process file change", filePath, error);
