@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-MnemonicForge-raycast houses a Raycast extension that helps the user smoothly execute customizable prompts from the desktop. Demonstration prompt files are stored under `prompts/`. Raycast extension code belongs in `raycast-extension/`; store command source in `src/`, configuration in `package.json`, and static assets under `assets/`.
+MnemonicForge-raycast houses a Raycast extension that helps the user smoothly execute customizable prompts from the desktop. Demonstration prompt files are stored under `prompts/`. Raycast extension code belongs in `raycast-extension/`; store command source in `src/`, configuration in `package.json`, and static assets under `assets/`. Official Raycast API documentation is available in `raycast-api-reference/`; consult these docs when working with Raycast components, hooks, or APIs.
 
 ## Build, Test, and Development Commands
 Run `cd raycast-extension && npm install` the first time to prepare the Raycast workspace. Use `npm run dev` inside that folder to launch live preview in the Raycast Development environment, and `npm run lint` before opening a pull request to ensure the TypeScript stays clean. For prompt verification, render templates via your preferred LLM client or Raycast command, then capture behavioral notes in your working branch.
