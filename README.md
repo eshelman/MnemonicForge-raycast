@@ -2,6 +2,8 @@
 
 Browse, search, and run customizeable prompts with Raycast. Keep prompts versioned in git while launching easily and quickly.
 
+**[Prompt File Specification](PROMPT_SPEC.md)** - How to write prompt templates with YAML front matter and Handlebars templating.
+
 ## Command
 
 - **Prompts** – Fuzzy-search the prompt library, quickly render & copy with defaults, edit templates in your preferred editor, and push into a full parameter form to copy or send to OpenAI.
