@@ -52,10 +52,8 @@ export async function gatherContext(
           if (selection) {
             context.selection = selection;
           }
-        } catch (error) {
-          if ((error as Error)?.name !== "NoSelectionError") {
-            console.warn("Failed to read selection", error);
-          }
+        } catch {
+          // Selection capture fails when no text is selected - this is expected
         }
       })(),
     );
