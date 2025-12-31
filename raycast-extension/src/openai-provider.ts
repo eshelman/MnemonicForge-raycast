@@ -94,11 +94,19 @@ export async function sendPromptToOpenAI(
   }
 
   const json = (await response.json()) as {
-    output: Array<{ content: Array<{ text?: { value: string } }> }>;
+    output: Array<{
+      type: string;
+      content?: Array<{ type: string; text?: string }>;
+    }>;
     usage?: { total_tokens?: number };
   };
 
-  const output = json.output?.[0]?.content?.[0]?.text?.value ?? "";
+  // Find the message item in output (array may contain tool calls, reasoning data, etc.)
+  const messageItem = json.output?.find((item) => item.type === "message");
+  const textContent = messageItem?.content?.find(
+    (c) => c.type === "output_text",
+  );
+  const output = textContent?.text ?? "";
 
   return {
     output,
