@@ -317,6 +317,12 @@ export class PromptIndex {
     }
   }
 
+  private watchError: Error | null = null;
+
+  getWatchError(): Error | null {
+    return this.watchError;
+  }
+
   private watch(): void {
     if (this.watcher) {
       return;
@@ -340,25 +346,45 @@ export class PromptIndex {
               await this.ingestFile(filePath, true);
               this.rebuildSearchIndex();
               this.emitUpdated();
-            } catch {
+            } catch (error) {
+              // File was likely deleted - remove from index
+              // Log non-ENOENT errors for debugging
+              if (
+                error instanceof Error &&
+                "code" in error &&
+                error.code !== "ENOENT"
+              ) {
+                console.warn("File rename handling error", filePath, error);
+              }
               this.removeFile(filePath);
             }
             return;
           }
 
           if (eventType === "change") {
-            await this.ingestFile(filePath, true);
-            this.rebuildSearchIndex();
-            this.emitUpdated();
+            try {
+              await this.ingestFile(filePath, true);
+              this.rebuildSearchIndex();
+              this.emitUpdated();
+            } catch (error) {
+              console.error("Failed to process file change", filePath, error);
+            }
           }
         },
       );
 
-      this.watcher.on("error", (error) =>
-        console.error("Prompt watcher error", error),
-      );
+      this.watcher.on("error", (error) => {
+        console.error("Prompt watcher error", error);
+        this.watchError = error;
+        this.emitUpdated();
+      });
     } catch (error) {
+      const watchErr =
+        error instanceof Error
+          ? error
+          : new Error("Failed to start prompt watcher");
       console.error("Failed to start prompt watcher", error);
+      this.watchError = watchErr;
     }
   }
 }

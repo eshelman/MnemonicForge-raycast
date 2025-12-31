@@ -30,6 +30,10 @@ import { usePromptIndex } from "./use-prompt-index";
 
 type ClipboardCategory = "empty" | "url" | "file" | "text";
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 interface ClipboardSnapshot {
   category: ClipboardCategory;
   text?: string;
@@ -57,6 +61,14 @@ function sanitizeContextForLog(
 }
 
 type ClipboardPastePayload = Parameters<typeof Clipboard.paste>[0];
+
+/**
+ * Creates a Clipboard.Content for file copying.
+ * Raycast's Clipboard API supports { file: URL } but types are incomplete.
+ */
+function createFileClipboardContent(fileURL: URL): Clipboard.Content {
+  return { file: fileURL } as Clipboard.Content;
+}
 
 function formatCopySuccessMessage(attachmentCount: number): string {
   if (!attachmentCount) {
@@ -201,7 +213,7 @@ async function copyPromptToClipboard({
   try {
     for (const attachment of attachments) {
       const fileURL = pathToFileURL(attachment);
-      const fileContent = { file: fileURL } as unknown as Clipboard.Content;
+      const fileContent = createFileClipboardContent(fileURL);
       try {
         await Clipboard.copy(fileContent);
         await sleep(75);
@@ -402,12 +414,20 @@ export default function PromptsCommand() {
       }
     }
 
-    const { collected, missing } = collectParameters(record, formValues);
+    const { collected, missing, invalid } = collectParameters(record, formValues);
     if (missing.length) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Quick render needs inputs",
         message: missing.map((parameter) => parameter.name).join(", "),
+      });
+      return;
+    }
+    if (invalid.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Invalid input",
+        message: invalid[0].message,
       });
       return;
     }
@@ -452,12 +472,10 @@ export default function PromptsCommand() {
         });
       }
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to render prompt";
       await showToast({
         style: Toast.Style.Failure,
         title: "Render failed",
-        message,
+        message: getErrorMessage(caught, "Failed to render prompt"),
       });
     }
   };
@@ -709,13 +727,22 @@ function PromptFormView({
       return;
     }
 
-    const { collected, missing } = collectParameters(record, values);
+    const { collected, missing, invalid } = collectParameters(record, values);
 
     if (missing.length) {
       await showToast({
         style: Toast.Style.Failure,
         title: "Missing required inputs",
         message: missing.map((parameter) => parameter.name).join(", "),
+      });
+      return;
+    }
+
+    if (invalid.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Invalid input",
+        message: invalid[0].message,
       });
       return;
     }
@@ -783,12 +810,10 @@ function PromptFormView({
         });
       }
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to render prompt";
       await showToast({
         style: Toast.Style.Failure,
         title: "Render failed",
-        message,
+        message: getErrorMessage(caught, "Failed to render prompt"),
       });
     }
   };
@@ -831,11 +856,9 @@ function PromptFormView({
         ? `${response.tokensUsed} tokens`
         : undefined;
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to send prompt";
       toast.style = Toast.Style.Failure;
       toast.title = "Send failed";
-      toast.message = message;
+      toast.message = getErrorMessage(caught, "Failed to send prompt");
     } finally {
       setIsSending(false);
     }
@@ -1011,13 +1034,23 @@ function PromptFormView({
   );
 }
 
+interface ParameterValidationError {
+  parameter: PromptParameter;
+  message: string;
+}
+
 function collectParameters(
   record: PromptRecord,
   values: RunPromptFormValues,
-): { collected: Record<string, unknown>; missing: PromptParameter[] } {
+): {
+  collected: Record<string, unknown>;
+  missing: PromptParameter[];
+  invalid: ParameterValidationError[];
+} {
   const parameters = record.frontMatter?.parameters ?? [];
   const collected: Record<string, unknown> = {};
   const missing: PromptParameter[] = [];
+  const invalid: ParameterValidationError[] = [];
 
   for (const parameter of parameters) {
     const fieldId = fieldNameForParameter(parameter);
@@ -1034,11 +1067,33 @@ function collectParameters(
 
       if (isEmpty) {
         missing.push(parameter);
+        continue;
+      }
+    }
+
+    // Validate regex pattern for string/text parameters
+    if (
+      parameter.regex &&
+      (parameter.type === "string" || parameter.type === "text") &&
+      typeof normalized === "string" &&
+      normalized.trim()
+    ) {
+      try {
+        const regex = new RegExp(parameter.regex);
+        if (!regex.test(normalized)) {
+          invalid.push({
+            parameter,
+            message: `${parameter.label ?? parameter.name} does not match required pattern`,
+          });
+        }
+      } catch {
+        // Invalid regex in schema - skip validation but log
+        console.warn(`Invalid regex pattern for parameter ${parameter.name}: ${parameter.regex}`);
       }
     }
   }
 
-  return { collected, missing };
+  return { collected, missing, invalid };
 }
 
 function promptRequestsUrl(record: PromptRecord): boolean {
