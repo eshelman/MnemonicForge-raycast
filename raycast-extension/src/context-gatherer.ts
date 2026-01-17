@@ -22,6 +22,28 @@ export interface ContextPreferences {
   date: boolean;
 }
 
+/**
+ * Wraps a promise with a timeout. Returns undefined if the timeout is reached.
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | undefined> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<undefined>((resolve) => {
+    timeoutId = setTimeout(() => resolve(undefined), timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    return result;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 export async function gatherContext(
   preferences: ContextPreferences,
 ): Promise<PromptContext> {
@@ -48,7 +70,9 @@ export async function gatherContext(
     tasks.push(
       (async () => {
         try {
-          const selection = await getSelectedText();
+          // getSelectedText uses macOS accessibility APIs which can be slow
+          // (2+ seconds) in certain apps. Use a timeout to prevent blocking.
+          const selection = await withTimeout(getSelectedText(), 500);
           if (selection) {
             context.selection = selection;
           }
