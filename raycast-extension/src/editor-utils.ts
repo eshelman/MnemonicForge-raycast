@@ -1,7 +1,23 @@
 import { showToast, Toast } from "@raycast/api";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import { access, constants } from "fs/promises";
 import { resolve } from "path";
+
+/**
+ * Check if a command exists in the system PATH.
+ * Returns the resolved path if found, null otherwise.
+ */
+function findCommandInPath(command: string): string | null {
+  try {
+    const result = execSync(`which ${command}`, {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return result.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 // Allowlist of known safe editor commands
 const KNOWN_EDITORS = new Set([
@@ -35,8 +51,11 @@ async function isExecutable(filePath: string): Promise<boolean> {
 }
 
 function isKnownEditor(executable: string): boolean {
-  const basename = executable.split("/").pop() ?? executable;
-  return KNOWN_EDITORS.has(basename.toLowerCase());
+  // Only treat as known editor if it's a bare command name, not an absolute path
+  if (executable.startsWith("/")) {
+    return false;
+  }
+  return KNOWN_EDITORS.has(executable.toLowerCase());
 }
 
 export async function openInExternalEditor(
@@ -51,7 +70,16 @@ export async function openInExternalEditor(
   const [executable, ...rest] = splitCommand(command);
 
   // Validate the executable is either a known editor or an absolute path that exists
-  if (!isKnownEditor(executable)) {
+  if (isKnownEditor(executable)) {
+    // For known editors, verify they exist in PATH before attempting to spawn
+    const resolvedPath = findCommandInPath(executable);
+    if (!resolvedPath) {
+      throw new Error(
+        `Editor '${executable}' not found. Please install it or add it to your PATH, ` +
+          `or configure a different editor in the extension preferences.`,
+      );
+    }
+  } else {
     if (!executable.startsWith("/")) {
       throw new Error(
         `Unknown editor command '${executable}'. Use a known editor (code, subl, vim, etc.) or an absolute path.`,
@@ -60,7 +88,9 @@ export async function openInExternalEditor(
 
     const resolvedPath = resolve(executable);
     if (resolvedPath !== executable) {
-      throw new Error("Editor path must be an absolute path without relative components");
+      throw new Error(
+        "Editor path must be an absolute path without relative components",
+      );
     }
 
     if (!(await isExecutable(executable))) {
