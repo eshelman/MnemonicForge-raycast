@@ -117,15 +117,7 @@ function postProcessOutput(text: string): string {
     .map((line) => line.replace(/[ \t]+$/u, ""))
     .join("\n");
 
-  const normalizedFences = strippedTrailingWhitespace.replace(
-    /```([^\n]*)[ \t]+\n/g,
-    (match, lang) => {
-      const cleaned = lang.trim();
-      return cleaned ? `\`\`\`${cleaned}\n` : "```\n";
-    },
-  );
-
-  const trimmed = normalizedFences.replace(/\s+$/u, "").trimEnd();
+  const trimmed = strippedTrailingWhitespace.trimEnd();
 
   return trimmed;
 }
