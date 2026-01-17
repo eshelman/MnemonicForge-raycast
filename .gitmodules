@@ -1,4 +1,0 @@
-[submodule "prompts"]
-	path = prompts
-	url = git@github.com:eshelman/MnemonicForge-prompts.git
-	branch = main
