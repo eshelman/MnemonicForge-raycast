@@ -19,7 +19,8 @@ import {
 import { stat } from "fs/promises";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useForm, FormValidation } from "@raycast/utils";
 import { gatherContext } from "./context-gatherer";
 import { summarizeContext } from "./context-summary";
 import { openInExternalEditor } from "./editor-utils";
@@ -679,7 +680,6 @@ function PromptFormView({
   const [lastContextSummary, setLastContextSummary] = useState<string | null>(
     null,
   );
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (!records.length) {
