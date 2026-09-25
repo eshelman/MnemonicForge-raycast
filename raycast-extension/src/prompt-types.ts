@@ -52,7 +52,6 @@ export interface PromptRecord {
   tags: string[];
   frontMatter?: PromptFrontMatter;
   content: string;
-  excerpt: string;
   modifiedAt: Date;
   validationIssues: PromptValidationIssue[];
 }

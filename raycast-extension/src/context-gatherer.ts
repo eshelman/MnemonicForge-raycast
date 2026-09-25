@@ -15,16 +15,14 @@ export interface PromptContext {
   [key: string]: unknown;
 }
 
-export interface ContextPreferences {
-  clipboard: boolean;
-  selection: boolean;
-  application: boolean;
-  date: boolean;
-}
+type ContextPreferences = Pick<
+  Preferences.Prompts,
+  | "contextDefaultClipboard"
+  | "contextDefaultSelection"
+  | "contextDefaultApp"
+  | "contextDefaultDate"
+>;
 
-/**
- * Wraps a promise with a timeout. Returns undefined if the timeout is reached.
- */
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -51,7 +49,7 @@ export async function gatherContext(
 
   const tasks: Promise<void>[] = [];
 
-  if (preferences.clipboard) {
+  if (preferences.contextDefaultClipboard) {
     tasks.push(
       (async () => {
         try {
@@ -66,7 +64,7 @@ export async function gatherContext(
     );
   }
 
-  if (preferences.selection) {
+  if (preferences.contextDefaultSelection) {
     tasks.push(
       (async () => {
         try {
@@ -83,7 +81,7 @@ export async function gatherContext(
     );
   }
 
-  if (preferences.application) {
+  if (preferences.contextDefaultApp) {
     tasks.push(
       (async () => {
         try {
@@ -101,7 +99,7 @@ export async function gatherContext(
     );
   }
 
-  if (preferences.date) {
+  if (preferences.contextDefaultDate) {
     context.date = new Date().toISOString();
   }
 

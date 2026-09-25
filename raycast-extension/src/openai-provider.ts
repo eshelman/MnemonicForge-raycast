@@ -1,124 +1,88 @@
 import { getPreferenceValues } from "@raycast/api";
 import { PromptFrontMatter } from "./prompt-types";
 
-export interface SendPromptOptions {
-  prompt: string;
-  frontMatter: PromptFrontMatter;
-  context?: Record<string, unknown>;
-}
-
 export interface SendPromptResult {
   output: string;
   tokensUsed?: number;
 }
 
-interface ProviderPreferences {
-  openaiModel?: string;
-  openaiTemperature?: string;
-  openaiMaxTokens?: string;
-  enableSend: boolean;
-  openaiApiKey?: string;
-  openaiApiEndpoint?: string;
+interface ResponsesApiResult {
+  output?: Array<{
+    type: string;
+    content?: Array<{ type: string; text?: string }>;
+  }>;
+  usage?: { total_tokens?: number };
 }
 
 const DEFAULT_MODEL = "gpt-5-mini";
 const DEFAULT_ENDPOINT = "https://api.openai.com/v1/responses";
 
-export async function sendPromptToOpenAI(
-  options: SendPromptOptions,
-): Promise<SendPromptResult> {
-  const preferences = getPreferenceValues<ProviderPreferences>();
-  if (!preferences.enableSend) {
-    throw new Error("Sending is disabled in preferences.");
+function parseOptionalNumber(value?: string): number | undefined {
+  if (!value?.trim()) {
+    return undefined;
   }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
-  const apiKey =
-    preferences.openaiApiKey?.trim() ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_KEY;
+export async function sendPromptToOpenAI(
+  prompt: string,
+  frontMatter: PromptFrontMatter,
+): Promise<SendPromptResult> {
+  const preferences = getPreferenceValues<Preferences.Prompts>();
+  const apiKey = preferences.openaiApiKey?.trim();
   if (!apiKey) {
     throw new Error(
       "OpenAI API key not configured. Add it in the extension preferences.",
     );
   }
 
-  const model =
-    options.frontMatter.model?.name ?? preferences.openaiModel ?? DEFAULT_MODEL;
-  const rawTemperature =
-    options.frontMatter.model?.temperature ?? preferences.openaiTemperature;
-  const parsedTemperature =
-    typeof rawTemperature === "number"
-      ? rawTemperature
-      : parseFloat(rawTemperature ?? "");
-  const temperature = Number.isFinite(parsedTemperature)
-    ? parsedTemperature
-    : 0.2;
-
-  const rawMaxTokens =
-    options.frontMatter.model?.max_tokens ?? preferences.openaiMaxTokens;
-  const parsedMaxTokens =
-    typeof rawMaxTokens === "number"
-      ? rawMaxTokens
-      : Number(rawMaxTokens ?? "");
-  const maxOutputTokens =
-    Number.isFinite(parsedMaxTokens) && parsedMaxTokens > 0
-      ? parsedMaxTokens
-      : 512;
-
-  const requestBody = {
-    model,
-    temperature,
-    max_output_tokens: maxOutputTokens,
-    messages: [
-      {
-        role: "user",
-        content: options.prompt,
-      },
-    ],
+  const body: Record<string, unknown> = {
+    model:
+      frontMatter.model?.name ??
+      (preferences.openaiModel?.trim() || DEFAULT_MODEL),
+    input: prompt,
   };
 
-  const endpoint = preferences.openaiApiEndpoint?.trim() || DEFAULT_ENDPOINT;
+  // Only send sampling limits when explicitly configured: reasoning models reject
+  // `temperature`, and reasoning tokens count against `max_output_tokens`.
+  const temperature =
+    frontMatter.model?.temperature ??
+    parseOptionalNumber(preferences.openaiTemperature);
+  if (temperature !== undefined) {
+    body.temperature = temperature;
+  }
+  const maxTokens =
+    frontMatter.model?.max_tokens ??
+    parseOptionalNumber(preferences.openaiMaxTokens);
+  if (maxTokens && maxTokens > 0) {
+    body.max_output_tokens = maxTokens;
+  }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
+  const response = await fetch(
+    preferences.openaiApiEndpoint?.trim() || DEFAULT_ENDPOINT,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(requestBody),
-  });
+  );
 
   if (!response.ok) {
-    const message = await safeReadError(response);
-    throw new Error(`OpenAI request failed: ${message}`);
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`OpenAI request failed: ${detail.slice(0, 500)}`);
   }
 
-  const json = (await response.json()) as {
-    output: Array<{
-      type: string;
-      content?: Array<{ type: string; text?: string }>;
-    }>;
-    usage?: { total_tokens?: number };
-  };
+  const json = (await response.json()) as ResponsesApiResult;
+  const output = (json.output ?? [])
+    .filter((item) => item.type === "message")
+    .flatMap((item) => item.content ?? [])
+    .filter((part) => part.type === "output_text")
+    .map((part) => part.text ?? "")
+    .join("");
 
-  // Find the message item in output (array may contain tool calls, reasoning data, etc.)
-  const messageItem = json.output?.find((item) => item.type === "message");
-  const textContent = messageItem?.content?.find(
-    (c) => c.type === "output_text",
-  );
-  const output = textContent?.text ?? "";
-
-  return {
-    output,
-    tokensUsed: json.usage?.total_tokens,
-  };
-}
-
-async function safeReadError(response: Response): Promise<string> {
-  try {
-    const text = await response.text();
-    return text.slice(0, 500);
-  } catch {
-    return response.statusText;
-  }
+  return { output, tokensUsed: json.usage?.total_tokens };
 }

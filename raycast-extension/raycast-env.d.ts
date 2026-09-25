@@ -12,7 +12,7 @@ type ExtensionPreferences = {
   "promptsPath": string,
   /** Paste After Copy - Automatically paste rendered output after it is copied. */
   "pasteAfterCopy": boolean,
-  /** Enable OpenAI Send - Allow prompts to be sent directly to OpenAI when ⌘↵ is pressed. */
+  /** Enable OpenAI Send - Allow prompts to be sent directly to OpenAI when ⌘⌥↵ is pressed. */
   "enableSend": boolean,
   /** OpenAI API Key - Used when prompts are sent directly to OpenAI. */
   "openaiApiKey"?: string,

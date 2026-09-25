@@ -1,262 +1,84 @@
-import { stat, readFile, readdir } from "fs/promises";
-import path from "path";
 import { watch } from "fs";
-import matter from "gray-matter";
-import Ajv, { ErrorObject } from "ajv";
+import { readdir, readFile, stat } from "fs/promises";
+import path from "path";
 import Fuse from "fuse.js";
 import { Cache } from "@raycast/api";
-import schema from "../prompt.schema.json";
-import {
-  PromptFrontMatter,
-  PromptRecord,
-  PromptValidationIssue,
-} from "./prompt-types";
+import { isPromptFile, parsePrompt } from "./prompt-parser";
+import { PromptRecord } from "./prompt-types";
 
 const cache = new Cache();
 const CACHE_KEY_PREFIX = "prompt-index:";
+const WATCH_DEBOUNCE_MS = 150;
+const RECENCY_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 
-interface CachedPromptRecord {
-  id: string;
-  filePath: string;
-  relativePath: string;
-  rootPath: string;
-  tags: string[];
-  frontMatter?: PromptFrontMatter;
-  content: string;
-  excerpt: string;
-  modifiedAt: string; // ISO string for serialization
-  validationIssues: PromptValidationIssue[];
+const FUSE_OPTIONS: Fuse.IFuseOptions<PromptRecord> = {
+  includeScore: true,
+  keys: [
+    { name: "frontMatter.title", weight: 0.45 },
+    { name: "frontMatter.description", weight: 0.2 },
+    { name: "tags", weight: 0.15 },
+    { name: "relativePath", weight: 0.1 },
+    { name: "content", weight: 0.1 },
+  ],
+  threshold: 0.4,
+  ignoreLocation: true,
+  minMatchCharLength: 2,
+};
+
+type CachedRecord = Omit<PromptRecord, "modifiedAt"> & { modifiedAt: string };
+
+function isHiddenOrVendored(name: string): boolean {
+  return name.startsWith(".") || name === "node_modules";
 }
 
-function serializeRecords(records: PromptRecord[]): string {
-  const cached: CachedPromptRecord[] = records.map((record) => ({
-    ...record,
-    modifiedAt: record.modifiedAt.toISOString(),
-  }));
-  return JSON.stringify(cached);
-}
-
-function deserializeRecords(data: string): PromptRecord[] {
-  try {
-    const cached: CachedPromptRecord[] = JSON.parse(data);
-    return cached.map((record) => ({
-      ...record,
-      modifiedAt: new Date(record.modifiedAt),
-    }));
-  } catch {
-    return [];
-  }
-}
-
-function getCacheKey(root: string): string {
-  return `${CACHE_KEY_PREFIX}${root}`;
-}
-
-const VALID_EXTENSIONS = new Set([
-  ".md",
-  ".markdown",
-  ".mdx",
-  ".txt",
-  ".yaml",
-  ".yml",
-]);
-
-const ajv = new Ajv({ allErrors: true, strict: false });
-const validateFrontMatter = ajv.compile(schema);
-
-function toTag(segment: string): string | null {
-  const normalized = segment
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .pop();
-
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-}
-
-function buildExcerpt(content: string, maxLength = 260): string {
-  const clean = content.trim().replace(/\s+/g, " ");
-  if (clean.length <= maxLength) {
-    return clean;
-  }
-
-  return `${clean.slice(0, maxLength - 1)}…`;
-}
-
-function collectIssues(
-  errors: ErrorObject[] | null | undefined,
-): PromptValidationIssue[] {
-  if (!errors) {
-    return [];
-  }
-
-  return errors.map((error) => ({
-    message: error.message ?? "Unknown schema validation error",
-    path: error.instancePath || undefined,
-  }));
-}
-
-async function walkDirectory(
-  root: string,
-  callback: (filePath: string) => Promise<void>,
-): Promise<void> {
-  const entries = await readdir(root, { withFileTypes: true });
-  await Promise.all(
+async function listPromptFiles(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const nested = await Promise.all(
     entries.map(async (entry) => {
-      const fullPath = path.join(root, entry.name);
+      const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) {
-          return;
-        }
-        await walkDirectory(fullPath, callback);
-        return;
+        return isHiddenOrVendored(entry.name) ? [] : listPromptFiles(fullPath);
       }
-
-      if (!entry.isFile()) {
-        return;
-      }
-
-      const extension = path.extname(entry.name).toLowerCase();
-      if (!VALID_EXTENSIONS.has(extension)) {
-        return;
-      }
-
-      await callback(fullPath);
+      return entry.isFile() && isPromptFile(entry.name) ? [fullPath] : [];
     }),
   );
+  return nested.flat();
 }
 
-function deriveTags(
-  relativePath: string,
-  frontMatter?: PromptFrontMatter,
-): string[] {
-  const segments = relativePath.split(path.sep).slice(0, -1);
-  const folderTags = segments
-    .map(toTag)
-    .filter((tag): tag is string => Boolean(tag));
-
-  const fmTags = frontMatter?.tags ?? [];
-  const combined = [...folderTags, ...fmTags];
-
-  const unique = new Set<string>();
-  for (const tag of combined) {
-    const normalized = tag.trim().toLowerCase();
-    if (normalized) {
-      unique.add(normalized);
-    }
-  }
-
-  return [...unique];
-}
-
-function buildRecord(
+async function loadRecord(
   filePath: string,
-  relativePath: string,
-  rootPath: string,
-  modifiedAt: Date,
-  content: string,
-  frontMatter?: PromptFrontMatter,
-  validationIssues: PromptValidationIssue[] = [],
-): PromptRecord {
-  const excerpt = buildExcerpt(content);
-  const tags = deriveTags(relativePath, frontMatter);
-
-  return {
-    id: relativePath,
-    filePath,
-    relativePath,
-    rootPath,
-    tags,
-    frontMatter,
-    content,
-    excerpt,
-    modifiedAt,
-    validationIssues,
-  };
-}
-
-export interface PromptSearchResult {
-  record: PromptRecord;
-  score: number;
+  root: string,
+): Promise<PromptRecord | null> {
+  try {
+    const [raw, stats] = await Promise.all([
+      readFile(filePath, "utf8"),
+      stat(filePath),
+    ]);
+    return parsePrompt(raw, filePath, root, stats.mtime);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("Failed to load prompt", filePath, error);
+    }
+    return null;
+  }
 }
 
 export class PromptIndex {
   private records = new Map<string, PromptRecord>();
-  private fuse: Fuse<PromptRecord> | null = null;
-  private watcher: ReturnType<typeof watch> | null = null;
-  private initialized = false;
-  private listeners = new Set<() => void>();
+  private sorted: PromptRecord[] = [];
+  private readonly fuse = new Fuse<PromptRecord>([], FUSE_OPTIONS);
+  private readonly listeners = new Set<() => void>();
+  private loading: Promise<void> | null = null;
+  private pendingPaths = new Set<string>();
+  private pendingFullRescan = false;
+  private flushTimer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly root: string) {}
-
-  async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    // Try to restore from cache first for faster startup
-    const cacheKey = getCacheKey(this.root);
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      const records = deserializeRecords(cached);
-      for (const record of records) {
-        this.records.set(record.filePath, record);
-      }
-      this.rebuildSearchIndex();
-      this.emitUpdated();
-    }
-
-    // Always do a full refresh to ensure freshness
-    await this.refresh();
-    this.watch();
-    this.initialized = true;
+  constructor(private readonly root: string) {
+    this.restoreFromCache();
   }
 
-  async refresh(): Promise<void> {
-    this.records.clear();
-    try {
-      await walkDirectory(this.root, async (filePath) => {
-        await this.ingestFile(filePath, true);
-      });
-    } catch (error) {
-      console.error("Failed to scan prompts directory", error);
-      throw error;
-    }
-
-    this.rebuildSearchIndex();
-    this.saveToCache();
-    this.emitUpdated();
-  }
-
-  private saveToCache(): void {
-    try {
-      const records = [...this.records.values()];
-      const cacheKey = getCacheKey(this.root);
-      cache.set(cacheKey, serializeRecords(records));
-    } catch (error) {
-      console.warn("Failed to save prompt index to cache", error);
-    }
-  }
-
-  async dispose(): Promise<void> {
-    this.watcher?.close();
-    this.watcher = null;
-    this.records.clear();
-    this.fuse = null;
-    this.initialized = false;
-  }
-
-  getAll(): PromptRecord[] {
-    return [...this.records.values()].sort(
-      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime(),
-    );
+  all(): PromptRecord[] {
+    return this.sorted;
   }
 
   subscribe(listener: () => void): () => void {
@@ -264,221 +86,155 @@ export class PromptIndex {
     return () => this.listeners.delete(listener);
   }
 
-  search(query: string, limit = 50): PromptSearchResult[] {
-    if (!query.trim()) {
-      return this.getAll()
-        .slice(0, limit)
-        .map((record, index) => ({ record, score: index }));
-    }
+  load(): Promise<void> {
+    this.loading ??= this.rescan()
+      .then(() => this.watch())
+      .catch((error) => {
+        this.loading = null;
+        throw error;
+      });
+    return this.loading;
+  }
 
-    if (!this.fuse) {
-      return [];
-    }
-
-    const fuseResults = this.fuse.search(query, { limit: limit * 2 });
+  search(query: string, limit = 50): PromptRecord[] {
     const now = Date.now();
-    const thirtyDaysMs = 1000 * 60 * 60 * 24 * 30;
-
-    return fuseResults
-      .map(({ item, score }) => {
-        const rawScore = typeof score === "number" ? score : 1;
-        const age = now - item.modifiedAt.getTime();
-        const recencyPenalty = Math.min(Math.max(age, 0) / thirtyDaysMs, 1);
-        const combinedScore = rawScore + recencyPenalty * 0.25;
-        return { record: item, score: combinedScore };
+    return this.fuse
+      .search(query, { limit: limit * 2 })
+      .map(({ item, score = 1 }) => {
+        const age = Math.max(now - item.modifiedAt.getTime(), 0);
+        const recencyPenalty = Math.min(age / RECENCY_WINDOW_MS, 1) * 0.25;
+        return { item, rank: score + recencyPenalty };
       })
-      .sort((a, b) => a.score - b.score)
-      .slice(0, limit);
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, limit)
+      .map(({ item }) => item);
   }
 
-  private rebuildSearchIndex(): void {
-    const records = [...this.records.values()];
-    this.fuse = new Fuse(records, {
-      includeScore: true,
-      keys: [
-        { name: "frontMatter.title", weight: 0.45 },
-        { name: "frontMatter.description", weight: 0.2 },
-        { name: "tags", weight: 0.15 },
-        { name: "relativePath", weight: 0.1 },
-        { name: "content", weight: 0.1 },
-      ],
-      threshold: 0.4,
-      ignoreLocation: true,
-      minMatchCharLength: 2,
-    });
+  private get cacheKey(): string {
+    return `${CACHE_KEY_PREFIX}${this.root}`;
   }
 
-  private emitUpdated(): void {
-    for (const listener of this.listeners) {
-      try {
-        listener();
-      } catch (error) {
-        console.error("PromptIndex listener error", error);
-      }
+  private restoreFromCache(): void {
+    const cached = cache.get(this.cacheKey);
+    if (!cached) {
+      return;
     }
-  }
-
-  private async ingestFile(
-    filePath: string,
-    silenceUpdate = false,
-  ): Promise<void> {
     try {
-      const fileStats = await stat(filePath);
-      if (!fileStats.isFile()) {
-        return;
-      }
-
-      const extension = path.extname(filePath).toLowerCase();
-      if (!VALID_EXTENSIONS.has(extension)) {
-        return;
-      }
-
-      const raw = await readFile(filePath, "utf8");
-      const parsed = matter(raw);
-      const relativePath = path.relative(this.root, filePath);
-
-      let frontMatter: PromptFrontMatter | undefined;
-      let validationIssues: PromptValidationIssue[] = [];
-
-      const hasFrontMatter = Object.keys(parsed.data ?? {}).length > 0;
-      if (hasFrontMatter) {
-        const valid = validateFrontMatter(parsed.data);
-        if (valid) {
-          frontMatter = parsed.data as PromptFrontMatter;
-        } else {
-          validationIssues = collectIssues(validateFrontMatter.errors);
-        }
-      } else {
-        validationIssues = [
-          {
-            message: "Missing front matter metadata",
-          },
-        ];
-      }
-
-      const record = buildRecord(
-        filePath,
-        relativePath,
-        this.root,
-        fileStats.mtime,
-        parsed.content,
-        frontMatter,
-        validationIssues,
+      const records = (JSON.parse(cached) as CachedRecord[]).map((record) => ({
+        ...record,
+        modifiedAt: new Date(record.modifiedAt),
+      }));
+      this.records = new Map(
+        records.map((record) => [record.filePath, record]),
       );
+      this.reindex();
+    } catch {
+      cache.remove(this.cacheKey);
+    }
+  }
 
-      this.records.set(filePath, record);
-      if (!silenceUpdate) {
-        this.emitUpdated();
-      }
+  private async rescan(): Promise<void> {
+    const files = await listPromptFiles(this.root);
+    const loaded = await Promise.all(
+      files.map((file) => loadRecord(file, this.root)),
+    );
+    this.records = new Map(
+      loaded
+        .filter((record): record is PromptRecord => record !== null)
+        .map((record) => [record.filePath, record]),
+    );
+    this.commit();
+  }
+
+  private reindex(): void {
+    this.sorted = [...this.records.values()].sort(
+      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime(),
+    );
+    this.fuse.setCollection(this.sorted);
+  }
+
+  private commit(): void {
+    this.reindex();
+    try {
+      cache.set(this.cacheKey, JSON.stringify(this.sorted));
     } catch (error) {
-      console.error("Failed to ingest prompt file", filePath, error);
+      console.warn("Failed to cache prompt index", error);
     }
-  }
-
-  private removeFile(filePath: string): void {
-    if (this.records.delete(filePath)) {
-      this.rebuildSearchIndex();
-      this.saveToCache();
-      this.emitUpdated();
+    for (const listener of this.listeners) {
+      listener();
     }
-  }
-
-  private watchError: Error | null = null;
-
-  getWatchError(): Error | null {
-    return this.watchError;
   }
 
   private watch(): void {
-    if (this.watcher) {
-      return;
+    try {
+      const watcher = watch(this.root, { recursive: true }, (_, filename) => {
+        if (!filename) {
+          return;
+        }
+        if (filename.split(path.sep).some(isHiddenOrVendored)) {
+          return;
+        }
+        if (isPromptFile(filename)) {
+          this.pendingPaths.add(path.join(this.root, filename));
+        } else if (!path.extname(filename)) {
+          // Likely a directory rename/delete, which may not emit per-file events.
+          this.pendingFullRescan = true;
+        } else {
+          return;
+        }
+        clearTimeout(this.flushTimer);
+        this.flushTimer = setTimeout(
+          () => void this.flushPending(),
+          WATCH_DEBOUNCE_MS,
+        );
+      });
+      watcher.on("error", (error) =>
+        console.error("Prompt watcher error", error),
+      );
+    } catch (error) {
+      console.error("Failed to watch prompts folder", error);
     }
+  }
+
+  private async flushPending(): Promise<void> {
+    const paths = [...this.pendingPaths];
+    const fullRescan = this.pendingFullRescan;
+    this.pendingPaths.clear();
+    this.pendingFullRescan = false;
 
     try {
-      this.watcher = watch(
-        this.root,
-        {
-          recursive: true,
-        },
-        async (eventType, filename) => {
-          if (!filename) {
-            return;
-          }
-
-          const filePath = path.join(this.root, filename);
-
-          if (eventType === "rename") {
-            try {
-              await this.ingestFile(filePath, true);
-              this.rebuildSearchIndex();
-              this.saveToCache();
-              this.emitUpdated();
-            } catch (error) {
-              // File was likely deleted - remove from index
-              // Log non-ENOENT errors for debugging
-              if (
-                error instanceof Error &&
-                "code" in error &&
-                error.code !== "ENOENT"
-              ) {
-                console.warn("File rename handling error", filePath, error);
-              }
-              this.removeFile(filePath);
-            }
-            return;
-          }
-
-          if (eventType === "change") {
-            try {
-              await this.ingestFile(filePath, true);
-              this.rebuildSearchIndex();
-              this.saveToCache();
-              this.emitUpdated();
-            } catch (error) {
-              console.error("Failed to process file change", filePath, error);
-            }
-          }
-        },
+      if (fullRescan) {
+        await this.rescan();
+        return;
+      }
+      const updates = await Promise.all(
+        paths.map(async (filePath) => ({
+          filePath,
+          record: await loadRecord(filePath, this.root),
+        })),
       );
-
-      this.watcher.on("error", (error) => {
-        console.error("Prompt watcher error", error);
-        this.watchError = error;
-        this.emitUpdated();
-      });
+      for (const { filePath, record } of updates) {
+        if (record) {
+          this.records.set(filePath, record);
+        } else {
+          this.records.delete(filePath);
+        }
+      }
+      this.commit();
     } catch (error) {
-      const watchErr =
-        error instanceof Error
-          ? error
-          : new Error("Failed to start prompt watcher");
-      console.error("Failed to start prompt watcher", error);
-      this.watchError = watchErr;
+      console.error("Failed to apply prompt changes", error);
     }
   }
 }
 
 const indices = new Map<string, PromptIndex>();
 
-export async function getPromptIndex(
-  promptsPath: string,
-): Promise<PromptIndex> {
-  const normalizedRoot = path.resolve(promptsPath);
-  let index = indices.get(normalizedRoot);
-
+export function getPromptIndex(promptsPath: string): PromptIndex {
+  const root = path.resolve(promptsPath);
+  let index = indices.get(root);
   if (!index) {
-    index = new PromptIndex(normalizedRoot);
-    indices.set(normalizedRoot, index);
+    index = new PromptIndex(root);
+    indices.set(root, index);
   }
-
-  await index.initialize();
   return index;
-}
-
-export async function disposePromptIndex(promptsPath: string): Promise<void> {
-  const normalizedRoot = path.resolve(promptsPath);
-  const index = indices.get(normalizedRoot);
-  if (index) {
-    await index.dispose();
-    indices.delete(normalizedRoot);
-  }
 }

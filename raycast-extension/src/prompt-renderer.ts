@@ -8,7 +8,6 @@ export interface RenderPromptOptions {
 
 export interface RenderedPrompt {
   output: string;
-  raw: string;
   metadata: {
     title: string;
     description?: string;
@@ -18,58 +17,61 @@ export interface RenderedPrompt {
 }
 
 const handlebars = Handlebars.create();
-let helpersRegistered = false;
 
-function ensureHelpersRegistered() {
-  if (helpersRegistered) {
-    return;
-  }
-
-  handlebars.registerHelper("uppercase", (value: unknown) =>
-    String(value ?? "").toUpperCase(),
-  );
-  handlebars.registerHelper("lowercase", (value: unknown) =>
-    String(value ?? "").toLowerCase(),
-  );
-  handlebars.registerHelper("join", (value: unknown, delimiter = ", ") => {
-    if (!Array.isArray(value)) {
-      return String(value ?? "");
-    }
-    return value.join(String(delimiter));
-  });
-  handlebars.registerHelper("indent", (value: unknown, spaces = 2) => {
-    const padding = " ".repeat(Number(spaces) || 0);
-    return String(value ?? "")
-      .split("\n")
-      .map((line) => `${padding}${line}`)
-      .join("\n");
-  });
-  handlebars.registerHelper("nl2br", (value: unknown) =>
-    String(value ?? "").replace(/\n/g, "<br />"),
-  );
-  handlebars.registerHelper(
-    "date",
-    (
-      value: unknown,
-      locale = "en-US",
-      options?: Intl.DateTimeFormatOptions,
-    ) => {
-      const date =
-        value instanceof Date ? value : new Date(String(value ?? ""));
-      if (Number.isNaN(date.getTime())) {
-        return "";
-      }
-      try {
-        return new Intl.DateTimeFormat(String(locale), options).format(date);
-      } catch (error) {
-        console.error("Date helper failed", error);
-        return date.toISOString();
-      }
-    },
-  );
-
-  helpersRegistered = true;
+// Handlebars appends its options object as the final helper argument, so
+// optional positional arguments must be read from what precedes it.
+function splitHelperArgs(args: unknown[]): {
+  positional: unknown[];
+  options: Handlebars.HelperOptions;
+} {
+  return {
+    positional: args.slice(0, -1),
+    options: args[args.length - 1] as Handlebars.HelperOptions,
+  };
 }
+
+handlebars.registerHelper("uppercase", (value: unknown) =>
+  String(value ?? "").toUpperCase(),
+);
+
+handlebars.registerHelper("lowercase", (value: unknown) =>
+  String(value ?? "").toLowerCase(),
+);
+
+handlebars.registerHelper("join", (value: unknown, ...args: unknown[]) => {
+  const [delimiter = ", "] = splitHelperArgs(args).positional;
+  return Array.isArray(value)
+    ? value.join(String(delimiter))
+    : String(value ?? "");
+});
+
+handlebars.registerHelper("indent", (value: unknown, ...args: unknown[]) => {
+  const [spaces = 2] = splitHelperArgs(args).positional;
+  const padding = " ".repeat(Number(spaces) || 0);
+  return String(value ?? "")
+    .split("\n")
+    .map((line) => `${padding}${line}`)
+    .join("\n");
+});
+
+handlebars.registerHelper("nl2br", (value: unknown) =>
+  String(value ?? "").replace(/\n/g, "<br />"),
+);
+
+// {{date value "en-GB" dateStyle="long"}} — hash args are Intl.DateTimeFormat options.
+handlebars.registerHelper("date", (value: unknown, ...args: unknown[]) => {
+  const { positional, options } = splitHelperArgs(args);
+  const [locale = "en-US"] = positional;
+  const date = value instanceof Date ? value : new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  try {
+    return new Intl.DateTimeFormat(String(locale), options.hash).format(date);
+  } catch {
+    return date.toISOString();
+  }
+});
 
 export function renderPrompt(
   record: PromptRecord,
@@ -79,27 +81,21 @@ export function renderPrompt(
     throw new Error("Prompt is missing front matter and cannot be rendered.");
   }
 
-  ensureHelpersRegistered();
-
-  const template = handlebars.compile(record.content, {
-    noEscape: true,
-  });
-
-  const context = {
+  const template = handlebars.compile(record.content, { noEscape: true });
+  const output = template({
     ...options.context,
     ...options.parameters,
     parameters: options.parameters,
     context: options.context ?? {},
     metadata: record.frontMatter,
     tags: record.tags,
-  };
-
-  const rawOutput = template(context);
-  const output = postProcessOutput(rawOutput);
+  });
 
   return {
-    output,
-    raw: rawOutput,
+    output: output
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+$/gm, "")
+      .trimEnd(),
     metadata: {
       title: record.frontMatter.title,
       description: record.frontMatter.description,
@@ -107,17 +103,4 @@ export function renderPrompt(
       sourcePath: record.filePath,
     },
   };
-}
-
-function postProcessOutput(text: string): string {
-  const normalizedNewlines = text.replace(/\r\n/g, "\n");
-
-  const strippedTrailingWhitespace = normalizedNewlines
-    .split("\n")
-    .map((line) => line.replace(/[ \t]+$/u, ""))
-    .join("\n");
-
-  const trimmed = strippedTrailingWhitespace.trimEnd();
-
-  return trimmed;
 }
