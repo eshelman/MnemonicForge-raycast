@@ -30,8 +30,6 @@ type ExtensionPreferences = {
   "contextDefaultSelection": boolean,
   /** Capture Frontmost App by Default - Include the name and bundle ID of the active application in context. */
   "contextDefaultApp": boolean,
-  /** Capture Current Date by Default - Add the current ISO8601 timestamp to the prompt context. */
-  "contextDefaultDate": boolean,
   /** Enable Debug Logging - Emit verbose logs to Raycast console for troubleshooting. */
   "debugLog": boolean,
   /** External Editor Command - Optional command used to open prompt files (e.g., subl, code, vim). */

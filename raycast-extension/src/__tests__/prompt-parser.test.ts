@@ -5,7 +5,7 @@ import { isPromptFile, parsePrompt } from "../prompt-parser";
 
 const root = "/prompts";
 const parse = (raw: string, relative = "note.md") =>
-  parsePrompt(raw, path.join(root, relative), root, new Date(0));
+  parsePrompt(raw, path.join(root, relative), root);
 
 test("valid front matter yields no issues and separates body from metadata", () => {
   const record = parse(

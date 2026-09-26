@@ -4,6 +4,7 @@ import { gatherContext, PromptContext } from "./context-gatherer";
 import { ClipboardSnapshot, collectParameters, FormValues } from "./parameters";
 import { RenderedPrompt, renderPrompt } from "./prompt-renderer";
 import { PromptRecord } from "./prompt-types";
+import { recordPromptUse } from "./usage-storage";
 
 type RenderPreferences = Preferences.Prompts;
 
@@ -27,10 +28,9 @@ export async function renderRecord(
     throw new Error(errors.join("; "));
   }
   const context = await gatherContext(preferences);
-  return {
-    rendered: renderPrompt(record, { parameters: values, context }),
-    context,
-  };
+  const rendered = renderPrompt(record, { parameters: values, context });
+  await recordPromptUse(record.id);
+  return { rendered, context };
 }
 
 function sleep(ms: number): Promise<void> {

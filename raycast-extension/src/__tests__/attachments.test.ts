@@ -30,7 +30,6 @@ function recordWith(files: string[]): PromptRecord {
     tags: [],
     frontMatter: { schema_version: 1, title: "P", files_to_paste: files },
     content: "",
-    modifiedAt: new Date(0),
     validationIssues: [],
   };
 }

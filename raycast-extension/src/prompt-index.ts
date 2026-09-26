@@ -1,5 +1,5 @@
 import { watch } from "fs";
-import { readdir, readFile, stat } from "fs/promises";
+import { readdir, readFile } from "fs/promises";
 import path from "path";
 import Fuse from "fuse.js";
 import { Cache } from "@raycast/api";
@@ -9,7 +9,6 @@ import { PromptRecord } from "./prompt-types";
 const cache = new Cache();
 const CACHE_KEY_PREFIX = "prompt-index:";
 const WATCH_DEBOUNCE_MS = 150;
-const RECENCY_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 
 const FUSE_OPTIONS: Fuse.IFuseOptions<PromptRecord> = {
   includeScore: true,
@@ -24,8 +23,6 @@ const FUSE_OPTIONS: Fuse.IFuseOptions<PromptRecord> = {
   ignoreLocation: true,
   minMatchCharLength: 2,
 };
-
-type CachedRecord = Omit<PromptRecord, "modifiedAt"> & { modifiedAt: string };
 
 function isHiddenOrVendored(name: string): boolean {
   return name.startsWith(".") || name === "node_modules";
@@ -50,11 +47,8 @@ async function loadRecord(
   root: string,
 ): Promise<PromptRecord | null> {
   try {
-    const [raw, stats] = await Promise.all([
-      readFile(filePath, "utf8"),
-      stat(filePath),
-    ]);
-    return parsePrompt(raw, filePath, root, stats.mtime);
+    const raw = await readFile(filePath, "utf8");
+    return parsePrompt(raw, filePath, root);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       console.error("Failed to load prompt", filePath, error);
@@ -65,7 +59,7 @@ async function loadRecord(
 
 export class PromptIndex {
   private records = new Map<string, PromptRecord>();
-  private sorted: PromptRecord[] = [];
+  private list: PromptRecord[] = [];
   private readonly fuse = new Fuse<PromptRecord>([], FUSE_OPTIONS);
   private readonly listeners = new Set<() => void>();
   private loading: Promise<void> | null = null;
@@ -78,7 +72,7 @@ export class PromptIndex {
   }
 
   all(): PromptRecord[] {
-    return this.sorted;
+    return this.list;
   }
 
   subscribe(listener: () => void): () => void {
@@ -96,18 +90,13 @@ export class PromptIndex {
     return this.loading;
   }
 
-  search(query: string, limit = 50): PromptRecord[] {
-    const now = Date.now();
+  search(
+    query: string,
+    limit = 50,
+  ): Array<{ record: PromptRecord; score: number }> {
     return this.fuse
-      .search(query, { limit: limit * 2 })
-      .map(({ item, score = 1 }) => {
-        const age = Math.max(now - item.modifiedAt.getTime(), 0);
-        const recencyPenalty = Math.min(age / RECENCY_WINDOW_MS, 1) * 0.25;
-        return { item, rank: score + recencyPenalty };
-      })
-      .sort((a, b) => a.rank - b.rank)
-      .slice(0, limit)
-      .map(({ item }) => item);
+      .search(query, { limit })
+      .map(({ item, score = 1 }) => ({ record: item, score }));
   }
 
   private get cacheKey(): string {
@@ -120,10 +109,7 @@ export class PromptIndex {
       return;
     }
     try {
-      const records = (JSON.parse(cached) as CachedRecord[]).map((record) => ({
-        ...record,
-        modifiedAt: new Date(record.modifiedAt),
-      }));
+      const records = JSON.parse(cached) as PromptRecord[];
       this.records = new Map(
         records.map((record) => [record.filePath, record]),
       );
@@ -147,16 +133,14 @@ export class PromptIndex {
   }
 
   private reindex(): void {
-    this.sorted = [...this.records.values()].sort(
-      (a, b) => b.modifiedAt.getTime() - a.modifiedAt.getTime(),
-    );
-    this.fuse.setCollection(this.sorted);
+    this.list = [...this.records.values()];
+    this.fuse.setCollection(this.list);
   }
 
   private commit(): void {
     this.reindex();
     try {
-      cache.set(this.cacheKey, JSON.stringify(this.sorted));
+      cache.set(this.cacheKey, JSON.stringify(this.list));
     } catch (error) {
       console.warn("Failed to cache prompt index", error);
     }

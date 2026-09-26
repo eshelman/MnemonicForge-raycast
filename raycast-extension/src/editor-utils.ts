@@ -17,11 +17,7 @@ const KNOWN_EDITORS = new Set([
   "mate",
   "bbedit",
   "edit",
-  "notepad",
-  "gedit",
-  "kate",
   "open",
-  "xdg-open",
 ]);
 
 function splitCommand(command: string): string[] {

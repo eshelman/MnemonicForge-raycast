@@ -14,7 +14,6 @@ function recordWith(content: string, frontMatter = true): PromptRecord {
       ? { schema_version: 1, title: "Test Prompt" }
       : undefined,
     content,
-    modifiedAt: new Date(0),
     validationIssues: [],
   };
 }
@@ -65,21 +64,39 @@ test("indent pads every line by 2 spaces by default", () => {
   );
 });
 
-test("date helper applies locale and Intl hash options", () => {
+test("formatDate applies locale and Intl hash options", () => {
   assert.equal(
-    render('{{date when "en-US" year="numeric"}}', {
+    render('{{formatDate when "en-US" year="numeric"}}', {
       when: "2024-06-15T12:00:00Z",
     }),
     "2024",
   );
 });
 
-test("date helper returns empty string for invalid dates", () => {
-  assert.equal(render("[{{date when}}]", { when: "not a date" }), "[]");
+test("formatDate returns empty string for invalid dates", () => {
+  assert.equal(render("[{{formatDate when}}]", { when: "not a date" }), "[]");
 });
 
 test("output strips trailing whitespace, CRLF, and trailing blank lines", () => {
   assert.equal(render("line one   \r\nline two\t\n\n\n"), "line one\nline two");
+});
+
+test("{{date}} renders the captured date rather than being shadowed by a helper", () => {
+  assert.equal(
+    render("{{date}}", {}, { date: "2026-01-01T00:00:00.000Z" }),
+    "2026-01-01T00:00:00.000Z",
+  );
+});
+
+test("a parameter named like a built-in (context, tags) is not overwritten", () => {
+  assert.equal(
+    render(
+      "{{#if context}}[{{context}}]{{/if}} {{tags}}",
+      { context: "", tags: "mine" },
+      { clipboard: "x" },
+    ),
+    " mine",
+  );
 });
 
 test("rendering a prompt without front matter throws", () => {

@@ -70,7 +70,6 @@ export function parsePrompt(
   raw: string,
   filePath: string,
   rootPath: string,
-  modifiedAt: Date,
 ): PromptRecord {
   const { data, content } = matter(raw);
   const relativePath = path.relative(rootPath, filePath);
@@ -84,7 +83,6 @@ export function parsePrompt(
     tags: deriveTags(relativePath, frontMatter),
     frontMatter,
     content,
-    modifiedAt,
     validationIssues,
   };
 }

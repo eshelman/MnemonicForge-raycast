@@ -58,20 +58,23 @@ handlebars.registerHelper("nl2br", (value: unknown) =>
   String(value ?? "").replace(/\n/g, "<br />"),
 );
 
-// {{date value "en-GB" dateStyle="long"}} — hash args are Intl.DateTimeFormat options.
-handlebars.registerHelper("date", (value: unknown, ...args: unknown[]) => {
-  const { positional, options } = splitHelperArgs(args);
-  const [locale = "en-US"] = positional;
-  const date = value instanceof Date ? value : new Date(String(value ?? ""));
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  try {
-    return new Intl.DateTimeFormat(String(locale), options.hash).format(date);
-  } catch {
-    return date.toISOString();
-  }
-});
+// {{formatDate value "en-GB" dateStyle="long"}} — hash args are Intl.DateTimeFormat options.
+handlebars.registerHelper(
+  "formatDate",
+  (value: unknown, ...args: unknown[]) => {
+    const { positional, options } = splitHelperArgs(args);
+    const [locale = "en-US"] = positional;
+    const date = value instanceof Date ? value : new Date(String(value ?? ""));
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    try {
+      return new Intl.DateTimeFormat(String(locale), options.hash).format(date);
+    } catch {
+      return date.toISOString();
+    }
+  },
+);
 
 export function renderPrompt(
   record: PromptRecord,
@@ -82,13 +85,14 @@ export function renderPrompt(
   }
 
   const template = handlebars.compile(record.content, { noEscape: true });
+  // A prompt's own parameters win over built-in names like `context` or `tags`.
   const output = template({
-    ...options.context,
-    ...options.parameters,
     parameters: options.parameters,
     context: options.context ?? {},
     metadata: record.frontMatter,
     tags: record.tags,
+    ...options.context,
+    ...options.parameters,
   });
 
   return {

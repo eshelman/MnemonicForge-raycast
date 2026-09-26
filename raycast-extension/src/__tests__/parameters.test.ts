@@ -151,7 +151,6 @@ function recordWithFrontMatter(
     tags: [],
     frontMatter: { schema_version: 1, title: "P", ...frontMatter },
     content: "",
-    modifiedAt: new Date(0),
     validationIssues: [],
   };
 }

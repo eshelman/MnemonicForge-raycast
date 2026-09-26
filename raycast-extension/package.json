@@ -8,8 +8,7 @@
   "license": "MIT",
   "icon": "extension-icon.png",
   "platforms": [
-    "macOS",
-    "Windows"
+    "macOS"
   ],
   "categories": [
     "Productivity"
@@ -128,15 +127,6 @@
       "type": "checkbox",
       "default": false,
       "label": "Capture Frontmost App",
-      "required": false
-    },
-    {
-      "name": "contextDefaultDate",
-      "title": "Capture Current Date by Default",
-      "description": "Add the current ISO8601 timestamp to the prompt context.",
-      "type": "checkbox",
-      "default": false,
-      "label": "Capture Current Date",
       "required": false
     },
     {

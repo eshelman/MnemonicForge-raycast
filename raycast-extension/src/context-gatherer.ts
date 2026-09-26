@@ -17,10 +17,7 @@ export interface PromptContext {
 
 type ContextPreferences = Pick<
   Preferences.Prompts,
-  | "contextDefaultClipboard"
-  | "contextDefaultSelection"
-  | "contextDefaultApp"
-  | "contextDefaultDate"
+  "contextDefaultClipboard" | "contextDefaultSelection" | "contextDefaultApp"
 >;
 
 async function withTimeout<T>(
@@ -45,7 +42,7 @@ async function withTimeout<T>(
 export async function gatherContext(
   preferences: ContextPreferences,
 ): Promise<PromptContext> {
-  const context: PromptContext = {};
+  const context: PromptContext = { date: new Date().toISOString() };
 
   const tasks: Promise<void>[] = [];
 
@@ -97,10 +94,6 @@ export async function gatherContext(
         }
       })(),
     );
-  }
-
-  if (preferences.contextDefaultDate) {
-    context.date = new Date().toISOString();
   }
 
   await Promise.all(tasks);

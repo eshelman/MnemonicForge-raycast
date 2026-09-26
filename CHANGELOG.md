@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Rank prompts by how often and how recently you use them (14-day half-life); unused prompts sort alphabetically.
+- Quick Render opens the parameter form when required inputs can't be filled from defaults or the clipboard.
+- Renamed the `date` Handlebars helper to `formatDate` so `{{date}}` renders the captured date instead of an empty string.
+- Prompt parameters now take precedence over built-in template names (fixes Email Composer's `context` parameter rendering as `[object Object]`).
+- `{{date}}` is always available; removed the Capture Current Date preference.
+- Rewrote PROMPT_SPEC to match actual template variables and helpers; folded design principles and backlog into the README.
+- Dropped Windows from supported platforms (macOS only).
+- Added GitHub Actions CI running lint, typecheck, and tests.
 - Fixed the Configure Prompt form crashing on submit (leftover `setValidationErrors` references).
 - Fixed OpenAI send to use the Responses API `input` field; temperature/max tokens are only sent when configured.
 - Fixed deleted prompts lingering in the list, and cached prompts now show instantly while the folder rescans.

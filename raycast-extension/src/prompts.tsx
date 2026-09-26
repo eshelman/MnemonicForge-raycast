@@ -12,12 +12,14 @@ import {
   showHUD,
   showToast,
   Toast,
+  useNavigation,
 } from "@raycast/api";
 import { useEffect, useMemo, useState } from "react";
 import {
   classifyClipboard,
   ClipboardFilter,
   ClipboardSnapshot,
+  collectParameters,
   defaultFilterFor,
   initialFormValues,
   matchesFilter,
@@ -25,6 +27,8 @@ import {
 import { OpenPromptAction, PromptForm } from "./prompt-form";
 import { PromptRecord } from "./prompt-types";
 import { errorMessage, renderAndCopy } from "./render";
+import { rankForBrowse, rankSearchResults, UsageStats } from "./usage";
+import { loadUsage } from "./usage-storage";
 import { usePromptIndex } from "./use-prompt-index";
 
 const PLACEHOLDERS: Record<ClipboardFilter, string> = {
@@ -43,6 +47,17 @@ export default function PromptsCommand() {
     kind: "empty",
   });
   const [filter, setFilter] = useState<ClipboardFilter>("none");
+  const [usage, setUsage] = useState<UsageStats | null>(null);
+  const { push } = useNavigation();
+
+  useEffect(() => {
+    loadUsage()
+      .then(setUsage)
+      .catch((caught) => {
+        console.warn("Failed to load prompt usage", caught);
+        setUsage({});
+      });
+  }, []);
 
   useEffect(() => {
     Clipboard.read()
@@ -65,16 +80,18 @@ export default function PromptsCommand() {
   }, [error]);
 
   const visible = useMemo(() => {
+    const stats = usage ?? {};
+    const now = Date.now();
     const query = searchText.trim();
     if (query) {
-      return search(query);
+      return rankSearchResults(search(query), stats, now);
     }
-    if (filter === "none") {
-      return records;
-    }
-    const filtered = records.filter((record) => matchesFilter(record, filter));
-    return filtered.length ? filtered : records;
-  }, [records, searchText, search, filter]);
+    const filtered =
+      filter === "none"
+        ? records
+        : records.filter((record) => matchesFilter(record, filter));
+    return rankForBrowse(filtered.length ? filtered : records, stats, now);
+  }, [records, searchText, search, filter, usage]);
 
   const onSearchTextChange = (text: string) => {
     setSearchText(text);
@@ -82,11 +99,13 @@ export default function PromptsCommand() {
   };
 
   const quickRender = async (record: PromptRecord) => {
+    const parameters = record.frontMatter?.parameters ?? [];
+    const values = initialFormValues(parameters, clipboard);
+    if (collectParameters(parameters, values).errors.length) {
+      push(<PromptForm record={record} clipboard={clipboard} />);
+      return;
+    }
     try {
-      const values = initialFormValues(
-        record.frontMatter?.parameters ?? [],
-        clipboard,
-      );
       const message = await renderAndCopy(
         record,
         values,
@@ -109,7 +128,7 @@ export default function PromptsCommand() {
     <List
       searchBarPlaceholder={PLACEHOLDERS[filter]}
       onSearchTextChange={onSearchTextChange}
-      isLoading={isLoading}
+      isLoading={isLoading || usage === null}
       throttle
       searchBarAccessory={
         <List.Dropdown
